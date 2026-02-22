@@ -32,7 +32,9 @@ use super::service::{
 };
 use crate::usage::tracking::UsageOperationType;
 
-use super::storage::{default_character_rules, recent_messages, save_session};
+use super::storage::{
+    default_character_rules, recent_messages, resolve_provider_credential_for_model, save_session,
+};
 use super::tooling::{parse_tool_calls, ToolCall, ToolChoice, ToolConfig, ToolDefinition};
 use super::types::{
     Character, ChatAddMessageAttachmentArgs, ChatCompletionArgs, ChatContinueArgs,
@@ -4986,20 +4988,7 @@ fn find_model_and_credential<'a>(
     model_id: &str,
 ) -> Option<(&'a Model, &'a ProviderCredential)> {
     let model = settings.models.iter().find(|m| m.id == model_id)?;
-    let preferred_provider = settings.default_provider_credential_id.as_ref();
-    let provider_cred = settings
-        .provider_credentials
-        .iter()
-        .find(|cred| {
-            cred.provider_id == model.provider_id
-                && preferred_provider.map(|id| id == &cred.id).unwrap_or(false)
-        })
-        .or_else(|| {
-            settings
-                .provider_credentials
-                .iter()
-                .find(|cred| cred.provider_id == model.provider_id)
-        })?;
+    let provider_cred = resolve_provider_credential_for_model(settings, model)?;
     Some((model, provider_cred))
 }
 
@@ -5268,10 +5257,7 @@ pub async fn chat_generate_user_reply(
         .find(|m| &m.id == model_id)
         .ok_or_else(|| "Help Me Reply model not found".to_string())?;
 
-    let provider_cred = settings
-        .provider_credentials
-        .iter()
-        .find(|cred| cred.provider_id == model.provider_id)
+    let provider_cred = resolve_provider_credential_for_model(settings, model)
         .ok_or_else(|| "Provider credential not found".to_string())?;
 
     let api_key = resolve_api_key(&app, provider_cred, "help_me_reply")?;

@@ -73,19 +73,43 @@ pub fn default_character_rules(pure_mode_level: &str) -> Vec<String> {
             rules.push("Avoid explicit sexual content".to_string());
         }
         "strict" => {
-            rules.push("Never generate sexually explicit, pornographic, or erotic content".to_string());
-            rules.push("Never describe sexual acts, nudity in sexual contexts, or sexual arousal".to_string());
-            rules.push("If asked to generate such content, decline and redirect the conversation".to_string());
-            rules.push("Romantic content must remain PG-13 — no explicit physical descriptions".to_string());
+            rules.push(
+                "Never generate sexually explicit, pornographic, or erotic content".to_string(),
+            );
+            rules.push(
+                "Never describe sexual acts, nudity in sexual contexts, or sexual arousal"
+                    .to_string(),
+            );
+            rules.push(
+                "If asked to generate such content, decline and redirect the conversation"
+                    .to_string(),
+            );
+            rules.push(
+                "Romantic content must remain PG-13 — no explicit physical descriptions"
+                    .to_string(),
+            );
             rules.push("Violence descriptions should avoid gratuitous gore or torture".to_string());
-            rules.push("Do not use suggestive, flirty, or sexually charged language or tone".to_string());
+            rules.push(
+                "Do not use suggestive, flirty, or sexually charged language or tone".to_string(),
+            );
         }
         // "standard" and anything else
         _ => {
-            rules.push("Never generate sexually explicit, pornographic, or erotic content".to_string());
-            rules.push("Never describe sexual acts, nudity in sexual contexts, or sexual arousal".to_string());
-            rules.push("If asked to generate such content, decline and redirect the conversation".to_string());
-            rules.push("Romantic content must remain PG-13 — no explicit physical descriptions".to_string());
+            rules.push(
+                "Never generate sexually explicit, pornographic, or erotic content".to_string(),
+            );
+            rules.push(
+                "Never describe sexual acts, nudity in sexual contexts, or sexual arousal"
+                    .to_string(),
+            );
+            rules.push(
+                "If asked to generate such content, decline and redirect the conversation"
+                    .to_string(),
+            );
+            rules.push(
+                "Romantic content must remain PG-13 — no explicit physical descriptions"
+                    .to_string(),
+            );
             rules.push("Violence descriptions should avoid gratuitous gore or torture".to_string());
         }
     }
@@ -221,22 +245,185 @@ pub fn select_model<'a>(
         .find(|m| m.id == model_id)
         .ok_or_else(|| "Model not found".to_string())?;
 
-    let provider_cred = settings
-        .provider_credentials
-        .iter()
-        .find(|cred| {
-            Some(cred.id.clone()) == settings.default_provider_credential_id
-                && cred.provider_id == model.provider_id
-        })
-        .or_else(|| {
-            settings
-                .provider_credentials
-                .iter()
-                .find(|cred| cred.provider_id == model.provider_id)
-        })
+    let provider_cred = resolve_provider_credential_for_model(settings, model)
         .ok_or_else(|| "Provider credential not found".to_string())?;
 
     Ok((model, provider_cred))
+}
+
+pub fn resolve_provider_credential_for_model<'a>(
+    settings: &'a Settings,
+    model: &Model,
+) -> Option<&'a ProviderCredential> {
+    let candidates: Vec<&ProviderCredential> = settings
+        .provider_credentials
+        .iter()
+        .filter(|cred| cred.provider_id == model.provider_id)
+        .collect();
+
+    if candidates.is_empty() {
+        return None;
+    }
+
+    if let Some(default_cred_id) = settings.default_provider_credential_id.as_ref() {
+        if let Some(default_match) = candidates
+            .iter()
+            .copied()
+            .find(|cred| &cred.id == default_cred_id)
+        {
+            return Some(default_match);
+        }
+    }
+
+    if candidates.len() == 1 {
+        return candidates.first().copied();
+    }
+
+    if !model.provider_label.trim().is_empty() {
+        if let Some(label_match) = candidates
+            .iter()
+            .copied()
+            .find(|cred| cred.label == model.provider_label)
+        {
+            return Some(label_match);
+        }
+    }
+
+    if let Some(default_model_match) = candidates
+        .iter()
+        .copied()
+        .find(|cred| cred.default_model.as_deref() == Some(model.name.as_str()))
+    {
+        return Some(default_model_match);
+    }
+
+    // Multiple credentials exist for the same provider type and none matched.
+    // Returning None avoids silently routing to the wrong endpoint.
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_provider_credential_for_model;
+    use crate::chat_manager::types::{AdvancedModelSettings, Model, ProviderCredential, Settings};
+    use serde_json::Value;
+
+    fn mk_model(provider_id: &str, provider_label: &str, name: &str) -> Model {
+        Model {
+            id: "model-1".to_string(),
+            name: name.to_string(),
+            provider_id: provider_id.to_string(),
+            provider_label: provider_label.to_string(),
+            display_name: name.to_string(),
+            created_at: 0,
+            input_scopes: vec!["text".to_string()],
+            output_scopes: vec!["text".to_string()],
+            advanced_model_settings: None,
+            prompt_template_id: None,
+            voice_config: None,
+            system_prompt: None,
+        }
+    }
+
+    fn mk_cred(
+        id: &str,
+        provider_id: &str,
+        label: &str,
+        default_model: Option<&str>,
+    ) -> ProviderCredential {
+        ProviderCredential {
+            id: id.to_string(),
+            provider_id: provider_id.to_string(),
+            label: label.to_string(),
+            api_key: Some("k".to_string()),
+            base_url: Some("https://example.com".to_string()),
+            default_model: default_model.map(str::to_string),
+            headers: None,
+            config: None,
+        }
+    }
+
+    fn mk_settings(
+        default_provider_credential_id: Option<&str>,
+        provider_credentials: Vec<ProviderCredential>,
+    ) -> Settings {
+        Settings {
+            default_provider_credential_id: default_provider_credential_id.map(str::to_string),
+            default_model_id: None,
+            provider_credentials,
+            models: vec![],
+            app_state: Value::Null,
+            advanced_model_settings: AdvancedModelSettings::default(),
+            advanced_settings: None,
+            prompt_template_id: None,
+            system_prompt: None,
+            migration_version: 0,
+        }
+    }
+
+    #[test]
+    fn resolves_single_candidate() {
+        let model = mk_model("custom", "local", "glm-auto");
+        let settings = mk_settings(None, vec![mk_cred("c1", "custom", "local", None)]);
+        let picked = resolve_provider_credential_for_model(&settings, &model).map(|c| c.id.clone());
+        assert_eq!(picked.as_deref(), Some("c1"));
+    }
+
+    #[test]
+    fn resolves_to_default_provider_credential_when_present() {
+        let model = mk_model("custom", "local", "glm-auto");
+        let settings = mk_settings(
+            Some("c2"),
+            vec![
+                mk_cred("c1", "custom", "local", None),
+                mk_cred("c2", "custom", "modal", None),
+            ],
+        );
+        let picked = resolve_provider_credential_for_model(&settings, &model).map(|c| c.id.clone());
+        assert_eq!(picked.as_deref(), Some("c2"));
+    }
+
+    #[test]
+    fn resolves_by_provider_label_when_multiple_candidates_exist() {
+        let model = mk_model("custom", "local", "glm-auto");
+        let settings = mk_settings(
+            None,
+            vec![
+                mk_cred("c1", "custom", "modal", None),
+                mk_cred("c2", "custom", "local", None),
+            ],
+        );
+        let picked = resolve_provider_credential_for_model(&settings, &model).map(|c| c.id.clone());
+        assert_eq!(picked.as_deref(), Some("c2"));
+    }
+
+    #[test]
+    fn resolves_by_credential_default_model_when_label_does_not_match() {
+        let model = mk_model("custom", "unknown", "glm-auto");
+        let settings = mk_settings(
+            None,
+            vec![
+                mk_cred("c1", "custom", "modal", None),
+                mk_cred("c2", "custom", "local", Some("glm-auto")),
+            ],
+        );
+        let picked = resolve_provider_credential_for_model(&settings, &model).map(|c| c.id.clone());
+        assert_eq!(picked.as_deref(), Some("c2"));
+    }
+
+    #[test]
+    fn returns_none_for_ambiguous_multiple_candidates() {
+        let model = mk_model("custom", "", "glm-auto");
+        let settings = mk_settings(
+            None,
+            vec![
+                mk_cred("c1", "custom", "one", None),
+                mk_cred("c2", "custom", "two", None),
+            ],
+        );
+        let picked = resolve_provider_credential_for_model(&settings, &model).map(|c| c.id.clone());
+        assert!(picked.is_none());
+    }
 }
 
 pub fn choose_persona<'a>(

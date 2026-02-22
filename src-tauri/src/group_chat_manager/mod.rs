@@ -37,7 +37,9 @@ use crate::chat_manager::request::{
     extract_error_message, extract_reasoning, extract_text, extract_usage,
 };
 use crate::chat_manager::service::resolve_api_key;
-use crate::chat_manager::storage::{load_personas, load_settings, select_model};
+use crate::chat_manager::storage::{
+    load_personas, load_settings, resolve_provider_credential_for_model, select_model,
+};
 use crate::chat_manager::tooling::{
     parse_tool_calls, ToolCall, ToolChoice, ToolConfig, ToolDefinition,
 };
@@ -1981,10 +1983,7 @@ fn find_model_and_credential<'a>(
     model_id: &str,
 ) -> Option<(&'a Model, &'a ProviderCredential)> {
     let model = settings.models.iter().find(|m| m.id == model_id)?;
-    let provider_cred = settings
-        .provider_credentials
-        .iter()
-        .find(|c| c.provider_id == model.provider_id)?;
+    let provider_cred = resolve_provider_credential_for_model(settings, model)?;
     Some((model, provider_cred))
 }
 
@@ -2840,10 +2839,7 @@ async fn select_speaker_via_llm_with_tracking(
         .first()
         .ok_or("No models configured for speaker selection")?;
 
-    let cred = settings
-        .provider_credentials
-        .iter()
-        .find(|c| c.provider_id == model.provider_id)
+    let cred = resolve_provider_credential_for_model(settings, model)
         .ok_or_else(|| format!("No credentials for provider {}", model.provider_id))?;
 
     let api_key = resolve_api_key(app, cred, "group_chat_selection")?;
@@ -4136,10 +4132,7 @@ pub async fn group_chat_generate_user_reply(
         .find(|m| &m.id == model_id)
         .ok_or_else(|| "Group Help Me Reply model not found".to_string())?;
 
-    let provider_cred = settings
-        .provider_credentials
-        .iter()
-        .find(|cred| cred.provider_id == model.provider_id)
+    let provider_cred = resolve_provider_credential_for_model(&settings, model)
         .ok_or_else(|| "Provider credential not found".to_string())?;
 
     let api_key = resolve_api_key(&app, provider_cred, "group_help_me_reply")?;
