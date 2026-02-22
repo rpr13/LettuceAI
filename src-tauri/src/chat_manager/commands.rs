@@ -4924,7 +4924,7 @@ async fn summarize_messages(
     }
 
     let calls = parse_tool_calls(&provider_cred.provider_id, api_response.data());
-    for call in calls {
+    for call in calls.iter() {
         if call.name == "write_summary" {
             if let Some(summary) = call
                 .arguments
@@ -4939,9 +4939,46 @@ async fn summarize_messages(
         }
     }
 
-    extract_text(api_response.data(), Some(&provider_cred.provider_id))
+    if let Some(text) = extract_text(api_response.data(), Some(&provider_cred.provider_id))
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| "Failed to summarize recent messages".to_string())
+    {
+        return Ok(text);
+    }
+
+    if calls.is_empty() {
+        let legacy_hint = if payload_contains_function_call(api_response.data()) {
+            " (response uses legacy function_call format)"
+        } else {
+            ""
+        };
+        return Err(format!(
+            "Failed to summarize recent messages: model returned no tool call and no text{}. Provider={}, model={}",
+            legacy_hint, provider_cred.provider_id, model.name
+        ));
+    }
+
+    let tool_names = calls
+        .iter()
+        .map(|c| c.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err(format!(
+        "Failed to summarize recent messages: expected write_summary tool call, got {}. Provider={}, model={}",
+        tool_names, provider_cred.provider_id, model.name
+    ))
+}
+
+fn payload_contains_function_call(value: &Value) -> bool {
+    match value {
+        Value::Object(map) => {
+            if map.contains_key("function_call") || map.contains_key("functionCall") {
+                return true;
+            }
+            map.values().any(payload_contains_function_call)
+        }
+        Value::Array(items) => items.iter().any(payload_contains_function_call),
+        _ => false,
+    }
 }
 
 fn find_model_and_credential<'a>(
