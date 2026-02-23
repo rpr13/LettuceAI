@@ -215,11 +215,9 @@ const ROLE_CONFIG = {
 
 function PromptEntryMessage({
   message,
-  index,
   onMenuOpen,
 }: {
   message: PreviewMessage;
-  index: number;
   onMenuOpen: (entryId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -234,7 +232,6 @@ function PromptEntryMessage({
       <div className="flex-1 min-w-0 px-3.5 py-2.5">
         {/* Header */}
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-mono text-fg/20 w-4 shrink-0">{index + 1}</span>
           <span
             className={cn(
               "px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider rounded",
@@ -402,31 +399,33 @@ export function MessageStructurePreview({
             <p className="text-[11px] text-fg/20 mt-0.5">Add entries or increase turns</p>
           </div>
         ) : (
-          messages.map((msg, i) =>
-            msg.isMock ? (
-              <MockMessage key={msg.id} message={msg} index={i} />
-            ) : (
-              <PromptEntryMessage
-                key={msg.id}
-                message={msg}
-                index={i}
-                onMenuOpen={setMenuOpenId}
-              />
-            ),
-          )
+          (() => {
+            let chatIndex = 0;
+            return messages.map((msg) =>
+              msg.isMock ? (
+                <MockMessage key={msg.id} message={msg} index={chatIndex++} />
+              ) : (
+                <PromptEntryMessage
+                  key={msg.id}
+                  message={msg}
+                  onMenuOpen={setMenuOpenId}
+                />
+              ),
+            );
+          })()
         )}
       </div>
 
       {/* Summary */}
       <div className="flex items-center gap-4 pt-2 border-t border-fg/5 text-[11px] text-fg/25">
         <span>
-          <span className="font-mono text-fg/40">{messages.length}</span> messages
+          <span className="font-mono text-fg/40">{mockCount}</span> chat
         </span>
         <span>
           <span className="font-mono text-info/40">{promptCount}</span> injected
         </span>
         <span>
-          <span className="font-mono text-fg/30">{mockCount}</span> mock
+          <span className="font-mono text-fg/40">{messages.length}</span> total
         </span>
       </div>
 
