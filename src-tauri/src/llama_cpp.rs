@@ -20,9 +20,14 @@ mod desktop {
     use llama_cpp_2::model::params::LlamaModelParams;
     use llama_cpp_2::model::{AddBos, LlamaChatMessage, LlamaChatTemplate, LlamaModel, Special};
     use llama_cpp_2::sampling::LlamaSampler;
+    use llama_cpp_sys_2::llama_flash_attn_type;
+    use llama_cpp_sys_2::LLAMA_FLASH_ATTN_TYPE_AUTO;
+    use llama_cpp_sys_2::LLAMA_FLASH_ATTN_TYPE_DISABLED;
+    use llama_cpp_sys_2::LLAMA_FLASH_ATTN_TYPE_ENABLED;
     use std::num::NonZeroU32;
     use std::path::Path;
     use std::sync::{Mutex, OnceLock};
+    use std::time::Instant;
     use tokio::sync::oneshot::error::TryRecvError;
 
     #[derive(serde::Serialize)]
@@ -39,6 +44,17 @@ mod desktop {
         model_path: Option<String>,
         model_params_key: Option<String>,
         model: Option<LlamaModel>,
+    }
+
+    fn compiled_gpu_backends() -> Vec<&'static str> {
+        let mut out = Vec::new();
+        if cfg!(feature = "llama-gpu-cuda") || cfg!(feature = "llama-gpu-cuda-no-vmm") {
+            out.push("cuda");
+        }
+        if cfg!(feature = "llama-gpu-vulkan") {
+            out.push("vulkan");
+        }
+        out
     }
 
     static ENGINE: OnceLock<Mutex<LlamaState>> = OnceLock::new();
@@ -75,7 +91,36 @@ mod desktop {
             .backend
             .as_ref()
             .ok_or_else(|| "llama.cpp backend unavailable".to_string())?;
+        if let Some(app) = app {
+            let gpu_backends = compiled_gpu_backends();
+            let gpu_backend_label = if gpu_backends.is_empty() {
+                "none".to_string()
+            } else {
+                gpu_backends.join(",")
+            };
+            log_info(
+                app,
+                "llama_cpp",
+                format!(
+                    "llama.cpp backend initialized: compiled_gpu_backends={} supports_gpu_offload={}",
+                    gpu_backend_label,
+                    backend.supports_gpu_offload()
+                ),
+            );
+        }
         let supports_gpu = backend.supports_gpu_offload();
+        if let (Some(app), Some(requested)) = (app, requested_gpu_layers) {
+            if requested > 0 && !supports_gpu {
+                log_warn(
+                    app,
+                    "llama_cpp",
+                    format!(
+                        "Requested llamaGpuLayers={} but this build has no active GPU offload; using CPU layers only.",
+                        requested
+                    ),
+                );
+            }
+        }
         let resolved_gpu_layers = if supports_gpu {
             requested_gpu_layers.unwrap_or(u32::MAX)
         } else {
@@ -169,6 +214,37 @@ mod desktop {
         value.replace('\0', "")
     }
 
+    fn parse_flash_attention_policy(body: &Value) -> Option<llama_flash_attn_type> {
+        let from_string = body
+            .get("llamaFlashAttentionPolicy")
+            .or_else(|| body.get("llama_flash_attention_policy"))
+            .and_then(|v| v.as_str())
+            .map(|v| v.trim().to_ascii_lowercase())
+            .and_then(|v| match v.as_str() {
+                "auto" => Some(LLAMA_FLASH_ATTN_TYPE_AUTO),
+                "enabled" | "enable" | "on" | "true" | "1" => Some(LLAMA_FLASH_ATTN_TYPE_ENABLED),
+                "disabled" | "disable" | "off" | "false" | "0" => {
+                    Some(LLAMA_FLASH_ATTN_TYPE_DISABLED)
+                }
+                _ => None,
+            });
+
+        if from_string.is_some() {
+            return from_string;
+        }
+
+        body.get("llamaFlashAttention")
+            .or_else(|| body.get("llama_flash_attention"))
+            .and_then(|v| v.as_bool())
+            .map(|enabled| {
+                if enabled {
+                    LLAMA_FLASH_ATTN_TYPE_ENABLED
+                } else {
+                    LLAMA_FLASH_ATTN_TYPE_DISABLED
+                }
+            })
+    }
+
     fn get_available_memory_bytes() -> Option<u64> {
         let mut sys = sysinfo::System::new();
         sys.refresh_memory();
@@ -203,7 +279,14 @@ mod desktop {
         model: &LlamaModel,
         available_memory_bytes: Option<u64>,
         max_context_length: u32,
+        llama_offload_kqv: Option<bool>,
     ) -> Option<u32> {
+        // If KV/KQV is explicitly offloaded to GPU, RAM-based context heuristics
+        // are much less relevant for context sizing.
+        if llama_offload_kqv == Some(true) {
+            return Some(max_context_length);
+        }
+
         let available = available_memory_bytes?;
         let model_size = model.size();
         let reserve = (available / 5).max(512 * 1024 * 1024);
@@ -351,6 +434,7 @@ mod desktop {
     pub async fn llamacpp_context_info(
         app: AppHandle,
         model_path: String,
+        llama_offload_kqv: Option<bool>,
     ) -> Result<LlamaCppContextInfo, String> {
         if model_path.trim().is_empty() {
             return Err(crate::utils::err_msg(
@@ -375,7 +459,7 @@ mod desktop {
         let max_ctx = model.n_ctx_train().max(1);
         let available_memory_bytes = get_available_memory_bytes();
         let recommended_context_length =
-            compute_recommended_context(model, available_memory_bytes, max_ctx);
+            compute_recommended_context(model, available_memory_bytes, max_ctx, llama_offload_kqv);
 
         Ok(LlamaCppContextInfo {
             max_context_length: max_ctx,
@@ -463,6 +547,7 @@ mod desktop {
             .get("llamaOffloadKqv")
             .or_else(|| body.get("llama_offload_kqv"))
             .and_then(|v| v.as_bool());
+        let llama_flash_attention_policy = parse_flash_attention_policy(body);
         let requested_context = body
             .get("context_length")
             .and_then(|v| v.as_u64())
@@ -490,6 +575,9 @@ mod desktop {
         let mut output = String::new();
         let mut prompt_tokens = 0u64;
         let mut completion_tokens = 0u64;
+        let inference_started_at = Instant::now();
+        let mut first_token_ms: Option<u64> = None;
+        let mut generation_elapsed_ms: Option<u64> = None;
 
         let result = (|| -> Result<(), String> {
             let engine = load_engine(Some(&app), model_path, llama_gpu_layers)?;
@@ -503,8 +591,12 @@ mod desktop {
                 .ok_or_else(|| "llama.cpp backend unavailable".to_string())?;
             let max_ctx = model.n_ctx_train().max(1);
             let available_memory_bytes = get_available_memory_bytes();
-            let recommended_ctx =
-                compute_recommended_context(model, available_memory_bytes, max_ctx);
+            let recommended_ctx = compute_recommended_context(
+                model,
+                available_memory_bytes,
+                max_ctx,
+                llama_offload_kqv,
+            );
             let ctx_size = if let Some(requested) = requested_context {
                 requested.min(max_ctx)
             } else if let Some(recommended) = recommended_ctx {
@@ -547,6 +639,9 @@ mod desktop {
             }
             if let Some(offload) = llama_offload_kqv {
                 ctx_params = ctx_params.with_offload_kqv(offload);
+            }
+            if let Some(policy) = llama_flash_attention_policy {
+                ctx_params = ctx_params.with_flash_attention_policy(policy);
             }
             if let Some(base) = llama_rope_freq_base {
                 ctx_params = ctx_params.with_rope_freq_base(base as f32);
@@ -626,6 +721,9 @@ mod desktop {
 
                 output.push_str(&piece);
                 completion_tokens += 1;
+                if first_token_ms.is_none() {
+                    first_token_ms = Some(inference_started_at.elapsed().as_millis() as u64);
+                }
 
                 if stream {
                     if let Some(ref id) = request_id {
@@ -656,6 +754,8 @@ mod desktop {
                 })?;
             }
 
+            generation_elapsed_ms = Some(inference_started_at.elapsed().as_millis() as u64);
+
             Ok(())
         })();
 
@@ -685,12 +785,23 @@ mod desktop {
 
         if stream {
             if let Some(ref id) = request_id {
+                let tokens_per_second = generation_elapsed_ms
+                    .and_then(|elapsed_ms| {
+                        if elapsed_ms == 0 || completion_tokens == 0 {
+                            None
+                        } else {
+                            Some((completion_tokens as f64) / (elapsed_ms as f64 / 1000.0))
+                        }
+                    })
+                    .filter(|v| v.is_finite() && *v >= 0.0);
                 let usage = UsageSummary {
                     prompt_tokens: Some(prompt_tokens),
                     completion_tokens: Some(completion_tokens),
                     total_tokens: Some(prompt_tokens + completion_tokens),
                     reasoning_tokens: None,
                     image_tokens: None,
+                    first_token_ms,
+                    tokens_per_second,
                     finish_reason: Some("stop".into()),
                 };
                 transport::emit_normalized(&app, id, NormalizedEvent::Usage { usage });
@@ -698,10 +809,22 @@ mod desktop {
             }
         }
 
+        let tokens_per_second = generation_elapsed_ms
+            .and_then(|elapsed_ms| {
+                if elapsed_ms == 0 || completion_tokens == 0 {
+                    None
+                } else {
+                    Some((completion_tokens as f64) / (elapsed_ms as f64 / 1000.0))
+                }
+            })
+            .filter(|v| v.is_finite() && *v >= 0.0);
+
         let usage_value = json!({
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": prompt_tokens + completion_tokens,
+            "first_token_ms": first_token_ms,
+            "tokens_per_second": tokens_per_second,
         });
 
         let data = json!({
@@ -742,10 +865,11 @@ pub async fn handle_local_request(
 pub async fn llamacpp_context_info(
     app: AppHandle,
     model_path: String,
+    llama_offload_kqv: Option<bool>,
 ) -> Result<serde_json::Value, String> {
     #[cfg(not(mobile))]
     {
-        let info = desktop::llamacpp_context_info(app, model_path).await?;
+        let info = desktop::llamacpp_context_info(app, model_path, llama_offload_kqv).await?;
         return serde_json::to_value(info).map_err(|e| {
             crate::utils::err_msg(
                 module_path!(),

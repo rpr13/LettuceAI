@@ -639,7 +639,7 @@ pub fn chatpkg_export_single_chat(
         "source": {
             "app": "lettuce",
             "format": "chatpkg",
-            "appVersion": app.package_info().version.to_string(),
+            "appVersion": crate::utils::app_version(&app),
         },
         "payload": {
             "session": session,
@@ -720,7 +720,7 @@ pub fn chatpkg_export_group_chat(
         "source": {
             "app": "lettuce",
             "format": "chatpkg",
-            "appVersion": app.package_info().version.to_string(),
+            "appVersion": crate::utils::app_version(&app),
         },
         "payload": payload,
     });

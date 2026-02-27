@@ -1022,7 +1022,7 @@ pub async fn backup_export(
         .unwrap()
         .as_millis() as u64;
 
-    let app_version = app.package_info().version.to_string();
+    let app_version = crate::utils::app_version(&app);
 
     let manifest = if let Some((salt, nonce, key)) = &encryption {
         // Create encrypted marker to verify password on import

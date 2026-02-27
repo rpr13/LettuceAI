@@ -570,6 +570,10 @@ pub struct UsageSummary {
     #[serde(default)]
     pub image_tokens: Option<u64>,
     #[serde(default)]
+    pub first_token_ms: Option<u64>,
+    #[serde(default)]
+    pub tokens_per_second: Option<f64>,
+    #[serde(default)]
     pub finish_reason: Option<String>,
 }
 

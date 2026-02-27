@@ -107,8 +107,7 @@ pub fn run() {
     let builder = builder.plugin(tauri_plugin_haptics::init());
 
     #[cfg(any(target_os = "android", target_os = "ios"))]
-    let builder = builder
-        .plugin(tauri_plugin_barcode_scanner::init());
+    let builder = builder.plugin(tauri_plugin_barcode_scanner::init());
 
     #[cfg(target_os = "android")]
     let builder = builder.plugin(tauri_plugin_android_fs::init());
@@ -519,6 +518,9 @@ pub fn run() {
                 }
             }
             tauri::RunEvent::ExitRequested { .. } => {
+                if let Some(registry) = handler.try_state::<abort_manager::AbortRegistry>() {
+                    registry.abort_all();
+                }
                 if let Some(state) = handler
                     .try_state::<std::sync::Arc<usage::app_activity::AppActiveUsageService>>()
                 {
@@ -526,6 +528,9 @@ pub fn run() {
                 }
             }
             tauri::RunEvent::Exit { .. } => {
+                if let Some(registry) = handler.try_state::<abort_manager::AbortRegistry>() {
+                    registry.abort_all();
+                }
                 if let Some(state) = handler
                     .try_state::<std::sync::Arc<usage::app_activity::AppActiveUsageService>>()
                 {

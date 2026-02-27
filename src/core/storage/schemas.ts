@@ -2,6 +2,14 @@ import { z } from "zod";
 
 const TokenCount = z.number().int().nonnegative();
 const OptionalTokenCount = z.preprocess((v) => (v === null ? undefined : v), TokenCount.optional());
+const OptionalMsCount = z.preprocess(
+  (v) => (v === null ? undefined : v),
+  z.number().int().nonnegative().optional(),
+);
+const OptionalPositiveNumber = z.preprocess(
+  (v) => (v === null ? undefined : v),
+  z.number().nonnegative().optional(),
+);
 
 export const PromptScopeSchema = z.enum(["appWide", "modelSpecific", "characterSpecific"]);
 export type PromptScope = z.infer<typeof PromptScopeSchema>;
@@ -45,6 +53,8 @@ export const UsageSummarySchema = z.object({
   totalTokens: OptionalTokenCount,
   reasoningTokens: OptionalTokenCount,
   imageTokens: OptionalTokenCount,
+  firstTokenMs: OptionalMsCount,
+  tokensPerSecond: OptionalPositiveNumber,
 });
 export type UsageSummary = z.infer<typeof UsageSummarySchema>;
 

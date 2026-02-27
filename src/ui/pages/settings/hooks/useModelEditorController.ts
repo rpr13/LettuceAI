@@ -97,7 +97,7 @@ export function useModelEditorController(): ControllerReturn {
   );
   const localProvider = useMemo<ProviderCredential>(
     () => ({
-      id: "local-llamacpp",
+      id: crypto.randomUUID(),
       providerId: "llamacpp",
       label: "llama.cpp (Local)",
       apiKey: "",

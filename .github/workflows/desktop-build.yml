@@ -3,6 +3,22 @@ name: Desktop Build (Tauri)
 on:
   push:
   workflow_dispatch:
+    inputs:
+      build_llama_cuda_linux:
+        description: "Also build Linux desktop with llama.cpp CUDA support"
+        required: false
+        default: false
+        type: boolean
+      build_llama_vulkan_linux:
+        description: "Also build Linux desktop with llama.cpp Vulkan support"
+        required: false
+        default: false
+        type: boolean
+      build_llama_cuda_windows:
+        description: "Also build Windows desktop with llama.cpp CUDA support"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   linux:
@@ -117,6 +133,44 @@ jobs:
           path: |
             src-tauri/target/release/bundle/**
 
+      - name: Install Linux Vulkan dependencies (optional GPU task)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_llama_vulkan_linux == true }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libvulkan-dev vulkan-tools
+
+      - name: Build Tauri (Linux, llama.cpp CUDA)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_llama_cuda_linux == true }}
+        env:
+          RUSTFLAGS: "--cfg DEV_BUILD"
+          CARGO_TARGET_DIR: src-tauri/target-cuda
+        run: |
+          bun run tauri build --config dev-config.json --features llama-gpu-cuda
+
+      - name: Upload Linux CUDA artifacts
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_llama_cuda_linux == true }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-build-llama-cuda
+          path: |
+            src-tauri/target-cuda/release/bundle/**
+
+      - name: Build Tauri (Linux, llama.cpp Vulkan)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_llama_vulkan_linux == true }}
+        env:
+          RUSTFLAGS: "--cfg DEV_BUILD"
+          CARGO_TARGET_DIR: src-tauri/target-vulkan
+        run: |
+          bun run tauri build --config dev-config.json --features llama-gpu-vulkan
+
+      - name: Upload Linux Vulkan artifacts
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_llama_vulkan_linux == true }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-build-llama-vulkan
+          path: |
+            src-tauri/target-vulkan/release/bundle/**
+
   windows:
     name: Windows Build
     runs-on: blacksmith-4vcpu-windows-2025
@@ -228,3 +282,19 @@ jobs:
           name: windows-build
           path: |
             src-tauri/target/release/bundle/**
+
+      - name: Build Tauri (Windows, llama.cpp CUDA)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_llama_cuda_windows == true }}
+        env:
+          RUSTFLAGS: "--cfg DEV_BUILD -C target-feature=-crt-static"
+          CMAKE_MSVC_RUNTIME_LIBRARY: "MultiThreadedDLL"
+          CARGO_TARGET_DIR: src-tauri/target-cuda
+        run: bun run tauri build --config dev-config.json --features llama-gpu-cuda
+
+      - name: Upload Windows CUDA artifacts
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_llama_cuda_windows == true }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-llama-cuda
+          path: |
+            src-tauri/target-cuda/release/bundle/**

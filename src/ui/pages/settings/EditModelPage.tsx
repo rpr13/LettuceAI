@@ -445,7 +445,10 @@ export function EditModelPage() {
 
     const timer = setTimeout(async () => {
       try {
-        const info = await invoke<LlamaCppContextInfo>("llamacpp_context_info", { modelPath });
+        const info = await invoke<LlamaCppContextInfo>("llamacpp_context_info", {
+          modelPath,
+          llamaOffloadKqv: modelAdvancedDraft.llamaOffloadKqv ?? null,
+        });
         if (!cancelled) {
           setLlamaContextInfo(info);
           setLlamaContextError(null);
@@ -470,7 +473,7 @@ export function EditModelPage() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [editorModel?.name, isLocalModel]);
+  }, [editorModel?.name, isLocalModel, modelAdvancedDraft.llamaOffloadKqv]);
 
   const scopeOrder = ["text", "image", "audio"] as const;
   const toggleScope = (
@@ -571,9 +574,7 @@ export function EditModelPage() {
                           title={prov.label || prov.providerId}
                           description={prov.providerId}
                           color={
-                            isSelected
-                              ? "from-accent to-accent/80"
-                              : "from-white/10 to-white/5"
+                            isSelected ? "from-accent to-accent/80" : "from-white/10 to-white/5"
                           }
                           rightElement={
                             isSelected ? (
@@ -719,9 +720,7 @@ export function EditModelPage() {
                               description={m.description || m.id}
                               color="from-accent to-accent/80"
                               rightElement={
-                                isSelected ? (
-                                  <Check className="h-4 w-4 text-accent" />
-                                ) : undefined
+                                isSelected ? <Check className="h-4 w-4 text-accent" /> : undefined
                               }
                               onClick={() => handleSelectModel(m.id, m.displayName)}
                             />
@@ -821,9 +820,7 @@ export function EditModelPage() {
                       <p className="text-[11px] font-bold tracking-wider text-fg/50 uppercase">
                         Capabilities
                       </p>
-                      <p className="mt-1 text-xs text-fg/40">
-                        Supported input/output modalities
-                      </p>
+                      <p className="mt-1 text-xs text-fg/40">Supported input/output modalities</p>
                     </div>
                     <button
                       type="button"
@@ -1349,9 +1346,7 @@ export function EditModelPage() {
                         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                           <div className="space-y-4">
                             <div className="space-y-0.5">
-                              <span className="block text-xs font-medium text-fg/70">
-                                Threads
-                              </span>
+                              <span className="block text-xs font-medium text-fg/70">Threads</span>
                               <span className="block text-[10px] text-fg/40">
                                 CPU threads for generation
                               </span>
@@ -1564,9 +1559,7 @@ export function EditModelPage() {
                         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                           <div className="space-y-4">
                             <div className="space-y-0.5">
-                              <span className="block text-xs font-medium text-fg/70">
-                                Num Ctx
-                              </span>
+                              <span className="block text-xs font-medium text-fg/70">Num Ctx</span>
                               <span className="block text-[10px] text-fg/40">
                                 Context window size
                               </span>
@@ -1626,9 +1619,7 @@ export function EditModelPage() {
                         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                           <div className="space-y-4">
                             <div className="space-y-0.5">
-                              <span className="block text-xs font-medium text-fg/70">
-                                Num Keep
-                              </span>
+                              <span className="block text-xs font-medium text-fg/70">Num Keep</span>
                               <span className="block text-[10px] text-fg/40">
                                 Tokens to keep from prompt
                               </span>
@@ -1688,9 +1679,7 @@ export function EditModelPage() {
                         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                           <div className="space-y-4">
                             <div className="space-y-0.5">
-                              <span className="block text-xs font-medium text-fg/70">
-                                Num GPU
-                              </span>
+                              <span className="block text-xs font-medium text-fg/70">Num GPU</span>
                               <span className="block text-[10px] text-fg/40">
                                 GPU layers offload
                               </span>
@@ -1850,9 +1839,7 @@ export function EditModelPage() {
                         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                           <div className="space-y-4">
                             <div className="space-y-0.5">
-                              <span className="block text-xs font-medium text-fg/70">
-                                Mirostat
-                              </span>
+                              <span className="block text-xs font-medium text-fg/70">Mirostat</span>
                               <span className="block text-[10px] text-fg/40">
                                 0 = off, 1 or 2 = enabled
                               </span>
@@ -1920,9 +1907,7 @@ export function EditModelPage() {
                               <span className="block text-xs font-medium text-fg/70">
                                 Mirostat Tau
                               </span>
-                              <span className="block text-[10px] text-fg/40">
-                                Target entropy
-                              </span>
+                              <span className="block text-[10px] text-fg/40">Target entropy</span>
                             </div>
                             <input
                               type="number"
@@ -2020,9 +2005,7 @@ export function EditModelPage() {
                               <span
                                 className={cn(
                                   "inline-block h-full w-full rounded-full transition-colors duration-200",
-                                  modelAdvancedDraft.reasoningEnabled
-                                    ? "bg-warning"
-                                    : "bg-fg/10",
+                                  modelAdvancedDraft.reasoningEnabled ? "bg-warning" : "bg-fg/10",
                                 )}
                               />
                               <span
