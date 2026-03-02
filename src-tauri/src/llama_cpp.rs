@@ -22,6 +22,7 @@ mod desktop {
     use llama_cpp_2::model::params::LlamaModelParams;
     use llama_cpp_2::model::{AddBos, LlamaChatMessage, LlamaChatTemplate, LlamaModel, Special};
     use llama_cpp_2::sampling::LlamaSampler;
+    use llama_cpp_2::TokenToStringError;
     use llama_cpp_sys_2::{
         ggml_backend_dev_count, ggml_backend_dev_get, ggml_backend_dev_memory,
         ggml_backend_dev_type, ggml_blck_size, llama_flash_attn_type,
@@ -233,6 +234,38 @@ mod desktop {
 
     fn sanitize_text(value: &str) -> String {
         value.replace('\0', "")
+    }
+
+    fn token_piece_bytes(
+        model: &LlamaModel,
+        token: llama_cpp_2::token::LlamaToken,
+    ) -> Result<Vec<u8>, String> {
+        match model.token_to_piece_bytes(token, 8, false, None) {
+            Ok(bytes) => Ok(bytes),
+            Err(TokenToStringError::InsufficientBufferSpace(needed)) => {
+                let required = usize::try_from(-needed).map_err(|_| {
+                    crate::utils::err_msg(
+                        module_path!(),
+                        line!(),
+                        format!("Invalid llama token buffer size hint: {needed}"),
+                    )
+                })?;
+                model
+                    .token_to_piece_bytes(token, required, false, None)
+                    .map_err(|e| {
+                        crate::utils::err_msg(
+                            module_path!(),
+                            line!(),
+                            format!("Failed to decode token bytes: {e}"),
+                        )
+                    })
+            }
+            Err(e) => Err(crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                format!("Failed to decode token bytes: {e}"),
+            )),
+        }
     }
 
     fn parse_flash_attention_policy(body: &Value) -> Option<llama_flash_attn_type> {
@@ -952,6 +985,7 @@ mod desktop {
             );
 
             let target_len = prompt_len + max_new as i32;
+            let mut pending_utf8 = Vec::<u8>::new();
             while n_cur < target_len {
                 if let Some(rx) = abort_rx.as_mut() {
                     match rx.try_recv() {
@@ -973,28 +1007,60 @@ mod desktop {
                     break;
                 }
 
-                let piece = model.token_to_str(token, Special::Plaintext).map_err(|e| {
-                    crate::utils::err_msg(
-                        module_path!(),
-                        line!(),
-                        format!("Failed to decode token: {e}"),
-                    )
-                })?;
+                let piece_bytes = token_piece_bytes(&model, token)?;
 
-                output.push_str(&piece);
+                pending_utf8.extend_from_slice(&piece_bytes);
+                let mut piece = String::new();
+
+                loop {
+                    match std::str::from_utf8(&pending_utf8) {
+                        Ok(valid) => {
+                            piece.push_str(valid);
+                            pending_utf8.clear();
+                            break;
+                        }
+                        Err(err) if err.error_len().is_none() => {
+                            break;
+                        }
+                        Err(err) => {
+                            let valid_up_to = err.valid_up_to();
+                            if valid_up_to > 0 {
+                                let valid = std::str::from_utf8(&pending_utf8[..valid_up_to])
+                                    .map_err(|e| {
+                                        crate::utils::err_msg(
+                                            module_path!(),
+                                            line!(),
+                                            format!("Failed to decode token prefix: {e}"),
+                                        )
+                                    })?;
+                                piece.push_str(valid);
+                                pending_utf8.drain(..valid_up_to);
+                                continue;
+                            }
+
+                            let invalid_len = err.error_len().unwrap_or(1);
+                            piece.push_str(&String::from_utf8_lossy(&pending_utf8[..invalid_len]));
+                            pending_utf8.drain(..invalid_len);
+                        }
+                    }
+                }
+
+                if !piece.is_empty() {
+                    output.push_str(&piece);
+                    if stream {
+                        if let Some(ref id) = request_id {
+                            transport::emit_normalized(
+                                &app,
+                                id,
+                                NormalizedEvent::Delta { text: piece },
+                            );
+                        }
+                    }
+                }
+
                 completion_tokens += 1;
                 if first_token_ms.is_none() {
                     first_token_ms = Some(inference_started_at.elapsed().as_millis() as u64);
-                }
-
-                if stream {
-                    if let Some(ref id) = request_id {
-                        transport::emit_normalized(
-                            &app,
-                            id,
-                            NormalizedEvent::Delta { text: piece },
-                        );
-                    }
                 }
 
                 batch.clear();
@@ -1014,6 +1080,16 @@ mod desktop {
                         format!("llama_decode failed: {e}"),
                     )
                 })?;
+            }
+
+            if !pending_utf8.is_empty() {
+                let tail = String::from_utf8_lossy(&pending_utf8).to_string();
+                output.push_str(&tail);
+                if stream {
+                    if let Some(ref id) = request_id {
+                        transport::emit_normalized(&app, id, NormalizedEvent::Delta { text: tail });
+                    }
+                }
             }
 
             generation_elapsed_ms = Some(inference_started_at.elapsed().as_millis() as u64);
