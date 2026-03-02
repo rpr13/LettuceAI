@@ -18,6 +18,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import React, { useState } from "react";
 
 import { processBackgroundImage } from "../../../core/utils/image";
+import { useI18n } from "../../../core/i18n/context";
 import { BottomMenu } from "../../components";
 import { typography, radius, spacing, interactive, cn } from "../../design-tokens";
 import { useNavigationManager, Routes } from "../../navigation";
@@ -27,6 +28,7 @@ import { useGroupSettingsController } from "./hooks/useGroupSettingsController";
 import { CharacterAvatar, PersonaSelector, QuickChip, SectionHeader } from "./components/settings";
 
 export function GroupSettingsPage() {
+  const { t } = useI18n();
   const { groupId } = useParams<{ groupId: string }>();
   const navigate = useNavigate();
   const { backOrReplace } = useNavigationManager();
@@ -168,9 +170,11 @@ export function GroupSettingsPage() {
             <ArrowLeft size={14} strokeWidth={2.5} />
           </button>
           <div className="min-w-0 flex-1 text-left">
-            <p className="truncate text-xl font-bold text-fg/90">Edit Group</p>
+            <p className="truncate text-xl font-bold text-fg/90">
+              {t("groupChats.groupSettings.title")}
+            </p>
             <p className="mt-0.5 truncate text-xs text-fg/50">
-              Update the default setup for future sessions
+              {t("groupChats.groupSettings.subtitle")}
             </p>
           </div>
         </div>
@@ -235,7 +239,7 @@ export function GroupSettingsPage() {
                         "border-b border-accent/50 focus:border-accent",
                         "focus:outline-none transition-colors",
                       )}
-                      placeholder="Enter group name"
+                      placeholder={t("groupChats.groupSettings.enterGroupName")}
                       autoFocus
                     />
                     <button
@@ -280,7 +284,9 @@ export function GroupSettingsPage() {
                       </p>
                       <p className={cn(typography.caption.size, "text-fg/45 mt-0.5")}>
                         {groupCharacters.length}{" "}
-                        {groupCharacters.length === 1 ? "participant" : "participants"}
+                        {groupCharacters.length === 1
+                          ? t("groupChats.groupSettings.participant")
+                          : t("groupChats.groupSettings.participants")}
                       </p>
                     </div>
                     <Edit2 className="h-4 w-4 shrink-0 text-fg/30 transition-colors group-hover:text-fg/60" />
@@ -301,10 +307,10 @@ export function GroupSettingsPage() {
                   <ImageIcon className="h-4 w-4" />
                   <span className={cn(typography.caption.size)}>
                     {savingBackground
-                      ? "Uploading..."
+                      ? t("groupChats.groupSettings.uploading")
                       : backgroundImagePath
-                        ? "Change background"
-                        : "Add background image"}
+                        ? t("groupChats.groupSettings.changeBackground")
+                        : t("groupChats.groupSettings.addBackgroundImage")}
                   </span>
                   <input
                     type="file"
@@ -320,7 +326,10 @@ export function GroupSettingsPage() {
 
           {/* Persona Section */}
           <section className={spacing.item}>
-            <SectionHeader title="Persona" subtitle="Default persona for new sessions" />
+            <SectionHeader
+              title={t("groupChats.groupSettings.persona")}
+              subtitle={t("groupChats.groupSettings.personaSubtitle")}
+            />
             <QuickChip
               icon={
                 personaAvatarUrl ? (
@@ -336,7 +345,7 @@ export function GroupSettingsPage() {
                   <User className="h-4 w-4" />
                 )
               }
-              label="Persona"
+              label={t("groupChats.groupSettings.personaLabel")}
               value={currentPersonaDisplay}
               onClick={() => setShowPersonaSelector(true)}
             />
@@ -344,26 +353,29 @@ export function GroupSettingsPage() {
 
           {/* Speaker Selection Method */}
           <section className={spacing.item}>
-            <SectionHeader title="Speaker Selection" subtitle="Default method for new sessions" />
+            <SectionHeader
+              title={t("groupChats.groupSettings.speakerSelection")}
+              subtitle={t("groupChats.groupSettings.speakerSubtitle")}
+            />
             <div className="grid grid-cols-3 gap-2">
               {(
                 [
                   {
                     value: "llm" as const,
-                    label: "LLM",
-                    desc: "AI picks",
+                    label: t("groupChats.groupSettings.llm"),
+                    desc: t("groupChats.groupSettings.aiPicks"),
                     icon: Brain,
                   },
                   {
                     value: "heuristic" as const,
-                    label: "Heuristic",
-                    desc: "Score-based",
+                    label: t("groupChats.groupSettings.heuristic"),
+                    desc: t("groupChats.groupSettings.scoreBased"),
                     icon: BarChart3,
                   },
                   {
                     value: "round_robin" as const,
-                    label: "Round Robin",
-                    desc: "Take turns",
+                    label: t("groupChats.groupSettings.roundRobin"),
+                    desc: t("groupChats.groupSettings.takeTurns"),
                     icon: RefreshCw,
                   },
                 ] as const
@@ -392,9 +404,7 @@ export function GroupSettingsPage() {
                   <div
                     className={cn(
                       "text-xs font-semibold",
-                      group.speakerSelectionMethod === option.value
-                        ? "text-accent"
-                        : "text-fg/80",
+                      group.speakerSelectionMethod === option.value ? "text-accent" : "text-fg/80",
                     )}
                   >
                     {option.label}
@@ -405,29 +415,32 @@ export function GroupSettingsPage() {
             </div>
             <p className={cn(typography.caption.size, "mt-2 text-fg/40")}>
               {group.speakerSelectionMethod === "llm"
-                ? "Uses your default model to choose who speaks (costs tokens)"
+                ? t("groupChats.groupSettings.llmDesc")
                 : group.speakerSelectionMethod === "heuristic"
-                  ? "Uses participation balance and context clues (free)"
-                  : "Characters take turns in order (free)"}
+                  ? t("groupChats.groupSettings.heuristicDesc")
+                  : t("groupChats.groupSettings.roundRobinDesc")}
             </p>
           </section>
 
           {/* Memory Mode */}
           <section className={spacing.item}>
-            <SectionHeader title="Memory Mode" subtitle="Default memory mode for new sessions" />
+            <SectionHeader
+              title={t("groupChats.groupSettings.memoryMode")}
+              subtitle={t("groupChats.groupSettings.memorySubtitle")}
+            />
             <div className="grid grid-cols-2 gap-2">
               {(
                 [
                   {
                     value: "manual" as const,
-                    label: "Manual",
-                    desc: "Manage notes yourself",
+                    label: t("groupChats.groupSettings.manual"),
+                    desc: t("groupChats.groupSettings.manualDesc"),
                     icon: Brain,
                   },
                   {
                     value: "dynamic" as const,
-                    label: "Dynamic",
-                    desc: "Automatic recall",
+                    label: t("groupChats.groupSettings.dynamic"),
+                    desc: t("groupChats.groupSettings.dynamicDesc"),
                     icon: Brain,
                   },
                 ] as const
@@ -450,17 +463,13 @@ export function GroupSettingsPage() {
                   <option.icon
                     className={cn(
                       "h-5 w-5",
-                      group.memoryType === option.value
-                        ? "text-accent/80"
-                        : "text-fg/50",
+                      group.memoryType === option.value ? "text-accent/80" : "text-fg/50",
                     )}
                   />
                   <div
                     className={cn(
                       "text-xs font-semibold",
-                      group.memoryType === option.value
-                        ? "text-accent"
-                        : "text-fg/80",
+                      group.memoryType === option.value ? "text-accent" : "text-fg/80",
                     )}
                   >
                     {option.label}
@@ -471,8 +480,8 @@ export function GroupSettingsPage() {
             </div>
             <p className={cn(typography.caption.size, "mt-2 text-fg/40")}>
               {group.memoryType === "dynamic"
-                ? "AI automatically creates and retrieves memories from conversations"
-                : "You add and manage memory notes yourself"}
+                ? t("groupChats.groupSettings.memoryDynamicInfo")
+                : t("groupChats.groupSettings.memoryManualInfo")}
             </p>
           </section>
 
@@ -480,8 +489,11 @@ export function GroupSettingsPage() {
           <section className={spacing.item}>
             <div className="flex items-center justify-between mb-3">
               <SectionHeader
-                title="Characters"
-                subtitle={`${groupCharacters.length} participants · ${groupCharacters.length - (group.mutedCharacterIds?.length ?? 0)} active`}
+                title={t("groupChats.groupSettings.characters")}
+                subtitle={t("groupChats.groupSettings.participantsActive", {
+                  total: String(groupCharacters.length),
+                  active: String(groupCharacters.length - (group.mutedCharacterIds?.length ?? 0)),
+                })}
               />
               <button
                 onClick={() => setShowAddCharacter(true)}
@@ -496,7 +508,7 @@ export function GroupSettingsPage() {
                 )}
               >
                 <Plus size={14} />
-                Add
+                {t("groupChats.groupSettings.add")}
               </button>
             </div>
 
@@ -523,11 +535,15 @@ export function GroupSettingsPage() {
                         <p className="text-sm font-medium text-fg truncate">
                           {character.name}
                           {isMuted && (
-                            <span className="ml-2 text-[10px] text-fg/40">(muted)</span>
+                            <span className="ml-2 text-[10px] text-fg/40">
+                              {t("groupChats.groupSettings.muted")}
+                            </span>
                           )}
                         </p>
                         <p className="text-xs text-fg/50 mt-0.5">
-                          {isMuted ? "Muted by default" : "Active by default"}
+                          {isMuted
+                            ? t("groupChats.groupSettings.mutedByDefault")
+                            : t("groupChats.groupSettings.activeByDefault")}
                         </p>
                       </div>
                       <button
@@ -538,7 +554,11 @@ export function GroupSettingsPage() {
                             ? "text-amber-300 hover:bg-amber-500/10"
                             : "text-fg/40 hover:text-fg hover:bg-fg/10",
                         )}
-                        title={isMuted ? "Unmute character" : "Mute character"}
+                        title={
+                          isMuted
+                            ? t("groupChats.groupSettings.unmuteCharacter")
+                            : t("groupChats.groupSettings.muteCharacter")
+                        }
                       >
                         {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
                       </button>
@@ -553,8 +573,8 @@ export function GroupSettingsPage() {
                         )}
                         title={
                           groupCharacters.length <= 2
-                            ? "Minimum 2 characters required"
-                            : "Remove character"
+                            ? t("groupChats.groupSettings.minTwoRequired")
+                            : t("groupChats.groupSettings.removeCharacter")
                         }
                       >
                         <Trash2 size={14} />
@@ -567,12 +587,11 @@ export function GroupSettingsPage() {
 
             {groupCharacters.length <= 2 && (
               <p className="mt-2 text-xs text-fg/40 text-center">
-                A group requires at least 2 characters
+                {t("groupChats.groupSettings.groupMinCharacters")}
               </p>
             )}
             <p className="mt-2 text-xs text-fg/40 text-center">
-              Muted characters are skipped by auto speaker selection, but can still respond via
-              explicit `@mention`.
+              {t("groupChats.groupSettings.mutedCharactersNote")}
             </p>
           </section>
 
@@ -598,12 +617,12 @@ export function GroupSettingsPage() {
       <BottomMenu
         isOpen={showAddCharacter}
         onClose={() => setShowAddCharacter(false)}
-        title="Add Character"
+        title={t("groupChats.groupSettings.addCharacterTitle")}
       >
         <div className="space-y-2 max-h-[60vh] overflow-y-auto">
           {availableCharacters.length === 0 ? (
             <div className="text-center py-8 text-fg/50 text-sm">
-              All characters are already in this group.
+              {t("groupChats.groupSettings.allCharactersInGroup")}
             </div>
           ) : (
             availableCharacters.map((character) => (
@@ -640,16 +659,16 @@ export function GroupSettingsPage() {
       <BottomMenu
         isOpen={showRemoveConfirm !== null}
         onClose={() => setShowRemoveConfirm(null)}
-        title="Remove Character?"
+        title={t("groupChats.groupSettings.removeCharacterTitle")}
       >
         {showRemoveConfirm && (
           <div className="space-y-4">
             <p className="text-sm text-fg/70">
-              Are you sure you want to remove{" "}
+              {t("groupChats.groupSettings.removeCharacterConfirm")}{" "}
               <span className="font-medium text-fg">
                 {groupCharacters.find((c) => c.id === showRemoveConfirm)?.name}
               </span>{" "}
-              from the group defaults?
+              {t("groupChats.groupSettings.removeCharacterFrom")}
             </p>
             <div className="flex gap-3">
               <button
@@ -657,14 +676,16 @@ export function GroupSettingsPage() {
                 disabled={saving}
                 className="flex-1 rounded-xl border border-fg/10 bg-fg/5 py-3 text-sm font-medium text-fg transition hover:border-fg/20 hover:bg-fg/10 disabled:opacity-50"
               >
-                Cancel
+                {t("common.buttons.cancel")}
               </button>
               <button
                 onClick={() => handleRemoveCharacter(showRemoveConfirm)}
                 disabled={saving}
                 className="flex-1 rounded-xl border border-danger/30 bg-danger/20 py-3 text-sm font-medium text-danger transition hover:bg-danger/30 disabled:opacity-50"
               >
-                {saving ? "Removing..." : "Remove"}
+                {saving
+                  ? t("groupChats.groupSettings.removing")
+                  : t("groupChats.groupSettings.remove")}
               </button>
             </div>
           </div>

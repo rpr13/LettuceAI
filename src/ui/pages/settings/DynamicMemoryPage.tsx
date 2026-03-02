@@ -363,9 +363,13 @@ export function DynamicMemoryPage() {
   const handleDeleteSelectedEmbeddingModel = async () => {
     const version = selectedEmbeddingVersion === "v2" ? "v2" : "v3";
     const confirmed = await confirmBottomMenu({
-      title: `Delete ${version.toUpperCase()} model?`,
-      message: `Are you sure you want to delete ${version.toUpperCase()}? You can download it again later.`,
-      confirmLabel: "Delete",
+      title: t("dynamicMemory.page.deleteEmbeddingTitle", {
+        version: version.toUpperCase(),
+      }),
+      message: t("dynamicMemory.page.deleteEmbeddingMessage", {
+        version: version.toUpperCase(),
+      }),
+      confirmLabel: t("dynamicMemory.page.delete"),
       destructive: true,
     });
     if (!confirmed) return;
@@ -405,6 +409,8 @@ export function DynamicMemoryPage() {
     selectedEmbeddingVersion ?? modelSourceVersion ?? modelVersion ?? null;
   const supportsExtendedTokenCapacity =
     effectiveEmbeddingVersion === "v2" || effectiveEmbeddingVersion === "v3";
+  const selectedSummarisationModelLabel =
+    selectedSummarisationModel?.displayName || t("dynamicMemory.page.selectedModel");
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -414,10 +420,7 @@ export function DynamicMemoryPage() {
           <div className={cn("rounded-xl border border-info/20 bg-info/5 p-3")}>
             <div className="flex items-start gap-2">
               <Info className="h-4 w-4 text-info shrink-0 mt-0.5" />
-              <p className="text-xs text-info/80 leading-relaxed">
-                Dynamic Memory automatically summarizes conversations to maintain context
-                efficiently. Choose a preset or fine-tune settings for your needs.
-              </p>
+              <p className="text-xs text-info/80 leading-relaxed">{t("dynamicMemory.page.info")}</p>
             </div>
           </div>
 
@@ -438,10 +441,10 @@ export function DynamicMemoryPage() {
                 <Info className="h-4 w-4 text-warning shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <p className="text-xs font-medium text-warning">
-                    Dynamic memory is disabled for direct chats
+                    {t("dynamicMemory.page.disabledDirectTitle")}
                   </p>
                   <p className="text-xs text-warning/60 mt-0.5">
-                    Toggle the switch in the Direct Chats tab to enable it. Group chats use per-session memory mode.
+                    {t("dynamicMemory.page.disabledDirectDescription")}
                   </p>
                 </div>
               </div>
@@ -460,7 +463,7 @@ export function DynamicMemoryPage() {
               )}
             >
               <Sparkles className="h-4 w-4" />
-              Direct Chats
+              {t("dynamicMemory.page.directChats")}
               {enabled && <span className="ml-1 w-1.5 h-1.5 rounded-full bg-accent" />}
             </button>
             <button
@@ -473,7 +476,7 @@ export function DynamicMemoryPage() {
               )}
             >
               <Users className="h-4 w-4" />
-              Group Chats
+              {t("dynamicMemory.page.groupChats")}
             </button>
           </div>
 
@@ -489,356 +492,367 @@ export function DynamicMemoryPage() {
             >
               {/* Enable Toggle (direct chats only) */}
               {activeTab === "direct" && (
-              <div className={cn("rounded-xl border border-fg/10 bg-fg/5 px-4 py-3")}>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <span className="text-sm font-medium text-fg">
-                      Enable for Direct Chats
-                    </span>
-                  </div>
-                  <button
-                    onClick={async () => {
-                      const next = !enabled;
-                      setEnabled(next);
-                      await handleDirectSettingChange("enabled", next);
-                    }}
-                    className={cn(
-                      "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors",
-                      enabled ? "bg-accent" : "bg-fg/20",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
-                        enabled ? "translate-x-6" : "translate-x-1",
-                      )}
-                    />
-                  </button>
-                </div>
-              </div>
-              )}
-
-              {activeTab === "group" && (
-              <div className={cn("rounded-xl border border-fg/8 bg-fg/3 px-4 py-3")}>
-                <p className="text-xs text-fg/50">
-                  Group chats use per-session memory mode. Enable dynamic memory in each group's settings. These settings control how dynamic memory behaves.
-                </p>
-              </div>
-              )}
-
-              <div className={cn(!currentEnabled && "opacity-50 pointer-events-none", "space-y-4")}>
-              {/* Presets */}
-              <div className="space-y-3">
-                <h3 className="text-[10px] font-semibold uppercase tracking-[0.25em] text-fg/35 px-1">
-                  Memory Profile
-                </h3>
-                <div className="grid grid-cols-3 gap-2">
-                  {(Object.keys(PRESET_INFO) as Exclude<MemoryPreset, "custom">[]).map((key) => {
-                    const info = PRESET_INFO[key];
-                    const Icon = info.icon;
-                    const isSelected = currentPreset === key;
-                    const colorClasses = {
-                      emerald: isSelected
-                        ? "border-accent/50 bg-accent/15 text-accent/90"
-                        : "border-fg/10 bg-fg/5 text-fg/60 hover:border-fg/20",
-                      blue: isSelected
-                        ? "border-info/50 bg-info/15 text-info"
-                        : "border-fg/10 bg-fg/5 text-fg/60 hover:border-fg/20",
-                      amber: isSelected
-                        ? "border-warning/50 bg-warning/15 text-warning/90"
-                        : "border-fg/10 bg-fg/5 text-fg/60 hover:border-fg/20",
-                    };
-
-                    return (
-                      <button
-                        key={key}
-                        onClick={() => {
-                          if (activeTab === "direct") {
-                            handleDirectPresetChange(key);
-                          } else {
-                            handleGroupPresetChange(key);
-                          }
-                        }}
-                        disabled={!currentEnabled}
-                        className={cn(
-                          "flex flex-col items-center gap-2 rounded-xl border p-3 transition-all",
-                          colorClasses[info.color as keyof typeof colorClasses],
-                          !currentEnabled && "cursor-not-allowed",
-                        )}
-                      >
-                        <div
-                          className={cn(
-                            "flex h-10 w-10 items-center justify-center rounded-full border",
-                            isSelected
-                              ? `border-${info.color}-400/40 bg-${info.color}-500/20`
-                              : "border-fg/10 bg-fg/10",
-                          )}
-                        >
-                          <Icon className="h-5 w-5" />
-                        </div>
-                        <span className="text-xs font-semibold">{t(`dynamicMemory.presets.${key}` as const)}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Preset Description */}
-                {currentPreset !== "custom" && (
-                  <div className="px-1">
-                    <p className="text-[11px] text-fg/45">
-                      {PRESET_INFO[currentPreset].description}
-                    </p>
-                  </div>
-                )}
-                {currentPreset === "custom" && (
-                  <div className="px-1">
-                    <p className="text-[11px] text-warning/70">
-                      Custom settings — adjust values in Advanced Options below.
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Context Enrichment (v2/v3) */}
-              {supportsExtendedTokenCapacity && currentEnabled && (
                 <div className={cn("rounded-xl border border-fg/10 bg-fg/5 px-4 py-3")}>
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-medium text-fg">Context Enrichment</span>
-                        <span className="rounded-md border border-info/30 bg-info/10 px-1.5 py-0.5 text-[10px] font-medium text-info/80">
-                          Experimental
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-fg/45 leading-relaxed">
-                        Uses recent messages for smarter memory retrieval
-                      </div>
+                      <span className="text-sm font-medium text-fg">
+                        {t("dynamicMemory.page.enableDirectChats")}
+                      </span>
                     </div>
-                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                      <input
-                        type="checkbox"
-                        checked={currentSettings.contextEnrichmentEnabled}
-                        onChange={(e) => {
-                          if (activeTab === "direct") {
-                            handleDirectSettingChange("contextEnrichmentEnabled", e.target.checked);
-                          } else {
-                            handleGroupSettingChange("contextEnrichmentEnabled", e.target.checked);
-                          }
-                        }}
-                        className="sr-only peer"
+                    <button
+                      onClick={async () => {
+                        const next = !enabled;
+                        setEnabled(next);
+                        await handleDirectSettingChange("enabled", next);
+                      }}
+                      className={cn(
+                        "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors",
+                        enabled ? "bg-accent" : "bg-fg/20",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                          enabled ? "translate-x-6" : "translate-x-1",
+                        )}
                       />
-                      <div className="w-11 h-6 bg-fg/10 rounded-full peer peer-checked:bg-info transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-fg after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div>
-                    </label>
+                    </button>
                   </div>
                 </div>
               )}
 
-              {/* Advanced Options Collapsible */}
-              <div className="rounded-xl border border-fg/10 bg-fg/5 overflow-hidden">
-                <button
-                  onClick={() => setAdvancedOpen(!advancedOpen)}
-                  className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-fg/5 transition-colors"
-                >
-                  <div>
-                    <span className="text-sm font-medium text-fg">Advanced Options</span>
-                    <p className="text-[11px] text-fg/45 mt-0.5">Fine-tune memory behavior</p>
+              {activeTab === "group" && (
+                <div className={cn("rounded-xl border border-fg/8 bg-fg/3 px-4 py-3")}>
+                  <p className="text-xs text-fg/50">{t("dynamicMemory.page.groupChatsInfo")}</p>
+                </div>
+              )}
+
+              <div className={cn(!currentEnabled && "opacity-50 pointer-events-none", "space-y-4")}>
+                {/* Presets */}
+                <div className="space-y-3">
+                  <h3 className="text-[10px] font-semibold uppercase tracking-[0.25em] text-fg/35 px-1">
+                    {t("dynamicMemory.page.memoryProfile")}
+                  </h3>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(Object.keys(PRESET_INFO) as Exclude<MemoryPreset, "custom">[]).map((key) => {
+                      const info = PRESET_INFO[key];
+                      const Icon = info.icon;
+                      const isSelected = currentPreset === key;
+                      const colorClasses = {
+                        emerald: isSelected
+                          ? "border-accent/50 bg-accent/15 text-accent/90"
+                          : "border-fg/10 bg-fg/5 text-fg/60 hover:border-fg/20",
+                        blue: isSelected
+                          ? "border-info/50 bg-info/15 text-info"
+                          : "border-fg/10 bg-fg/5 text-fg/60 hover:border-fg/20",
+                        amber: isSelected
+                          ? "border-warning/50 bg-warning/15 text-warning/90"
+                          : "border-fg/10 bg-fg/5 text-fg/60 hover:border-fg/20",
+                      };
+
+                      return (
+                        <button
+                          key={key}
+                          onClick={() => {
+                            if (activeTab === "direct") {
+                              handleDirectPresetChange(key);
+                            } else {
+                              handleGroupPresetChange(key);
+                            }
+                          }}
+                          disabled={!currentEnabled}
+                          className={cn(
+                            "flex flex-col items-center gap-2 rounded-xl border p-3 transition-all",
+                            colorClasses[info.color as keyof typeof colorClasses],
+                            !currentEnabled && "cursor-not-allowed",
+                          )}
+                        >
+                          <div
+                            className={cn(
+                              "flex h-10 w-10 items-center justify-center rounded-full border",
+                              isSelected
+                                ? `border-${info.color}-400/40 bg-${info.color}-500/20`
+                                : "border-fg/10 bg-fg/10",
+                            )}
+                          >
+                            <Icon className="h-5 w-5" />
+                          </div>
+                          <span className="text-xs font-semibold">
+                            {t(`dynamicMemory.presets.${key}` as const)}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
-                  <ChevronDown
-                    className={cn(
-                      "h-5 w-5 text-fg/40 transition-transform",
-                      advancedOpen && "rotate-180",
-                    )}
-                  />
-                </button>
 
-                <AnimatePresence>
-                  {advancedOpen && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: "auto", opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="px-4 pb-4 space-y-4 border-t border-fg/10 pt-4">
-                        {/* Summary Interval */}
-                        <SettingRow
-                          label="Summary Interval"
-                          description="Messages between summaries"
-                          value={currentSettings.summaryMessageInterval}
-                          unit="msgs"
-                          min={10}
-                          max={100}
-                          step={5}
-                          onChange={(val) => {
-                            if (activeTab === "direct") {
-                              handleDirectSettingChange("summaryMessageInterval", val);
-                            } else {
-                              handleGroupSettingChange("summaryMessageInterval", val);
-                            }
-                          }}
-                        />
-
-                        {/* Max Entries */}
-                        <SettingRow
-                          label="Max Memory Entries"
-                          description="Maximum stored memories"
-                          value={currentSettings.maxEntries}
-                          unit="entries"
-                          min={10}
-                          max={200}
-                          step={10}
-                          onChange={(val) => {
-                            if (activeTab === "direct") {
-                              handleDirectSettingChange("maxEntries", val);
-                            } else {
-                              handleGroupSettingChange("maxEntries", val);
-                            }
-                          }}
-                        />
-
-                        {/* Hot Memory Budget */}
-                        <SettingRow
-                          label="Hot Memory Budget"
-                          description="Token limit for active memories"
-                          value={currentSettings.hotMemoryTokenBudget}
-                          unit="tokens"
-                          min={500}
-                          max={10000}
-                          step={500}
-                          onChange={(val) => {
-                            if (activeTab === "direct") {
-                              handleDirectSettingChange("hotMemoryTokenBudget", val);
-                            } else {
-                              handleGroupSettingChange("hotMemoryTokenBudget", val);
-                            }
-                          }}
-                        />
-
-                        {/* Relevance Threshold */}
-                        <SettingRow
-                          label="Relevance Threshold"
-                          description="Min similarity for retrieval"
-                          value={currentSettings.minSimilarityThreshold}
-                          min={0.1}
-                          max={0.8}
-                          step={0.05}
-                          decimals={2}
-                          onChange={(val) => {
-                            if (activeTab === "direct") {
-                              handleDirectSettingChange("minSimilarityThreshold", val);
-                            } else {
-                              handleGroupSettingChange("minSimilarityThreshold", val);
-                            }
-                          }}
-                        />
-
-                        {/* Retrieval Limit */}
-                        <div className="space-y-2">
-                          <div className="text-[11px] font-medium text-fg/90">
-                            Retrieval Mode
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <button
-                              onClick={() => {
-                                if (activeTab === "direct") {
-                                  handleDirectSettingChange("retrievalStrategy", "smart");
-                                } else {
-                                  handleGroupSettingChange("retrievalStrategy", "smart");
-                                }
-                              }}
-                              className={cn(
-                                "rounded-lg border px-3 py-2 text-xs font-medium transition-colors",
-                                currentSettings.retrievalStrategy === "smart"
-                                  ? "border-info/50 bg-info/20 text-info"
-                                  : "border-fg/10 bg-fg/5 text-fg/60 hover:border-fg/20",
-                              )}
-                            >
-                              Smart
-                            </button>
-                            <button
-                              onClick={() => {
-                                if (activeTab === "direct") {
-                                  handleDirectSettingChange("retrievalStrategy", "cosine");
-                                } else {
-                                  handleGroupSettingChange("retrievalStrategy", "cosine");
-                                }
-                              }}
-                              className={cn(
-                                "rounded-lg border px-3 py-2 text-xs font-medium transition-colors",
-                                currentSettings.retrievalStrategy === "cosine"
-                                  ? "border-info/50 bg-info/20 text-info"
-                                  : "border-fg/10 bg-fg/5 text-fg/60 hover:border-fg/20",
-                              )}
-                            >
-                              Cosine
-                            </button>
-                          </div>
-                          <p className="text-[11px] text-fg/45">
-                            Smart blends relevance with recency/frequency. Cosine uses pure top
-                            similarity.
-                          </p>
-                        </div>
-
-                        {/* Retrieval Limit */}
-                        <SettingRow
-                          label="Retrieval Limit"
-                          description="Max memories selected per turn"
-                          value={currentSettings.retrievalLimit}
-                          unit="items"
-                          min={1}
-                          max={20}
-                          step={1}
-                          onChange={(val) => {
-                            if (activeTab === "direct") {
-                              handleDirectSettingChange("retrievalLimit", val);
-                            } else {
-                              handleGroupSettingChange("retrievalLimit", val);
-                            }
-                          }}
-                        />
-
-                        {/* Decay Rate */}
-                        <SettingRow
-                          label="Decay Rate"
-                          description="How fast importance fades"
-                          value={currentSettings.decayRate}
-                          unit="/ cycle"
-                          min={0.01}
-                          max={0.3}
-                          step={0.01}
-                          decimals={2}
-                          onChange={(val) => {
-                            if (activeTab === "direct") {
-                              handleDirectSettingChange("decayRate", val);
-                            } else {
-                              handleGroupSettingChange("decayRate", val);
-                            }
-                          }}
-                        />
-
-                        {/* Cold Threshold */}
-                        <SettingRow
-                          label="Cold Storage Threshold"
-                          description="When memories move to archive"
-                          value={currentSettings.coldThreshold}
-                          min={0.1}
-                          max={0.5}
-                          step={0.05}
-                          decimals={2}
-                          onChange={(val) => {
-                            if (activeTab === "direct") {
-                              handleDirectSettingChange("coldThreshold", val);
-                            } else {
-                              handleGroupSettingChange("coldThreshold", val);
-                            }
-                          }}
-                        />
-                      </div>
-                    </motion.div>
+                  {/* Preset Description */}
+                  {currentPreset !== "custom" && (
+                    <div className="px-1">
+                      <p className="text-[11px] text-fg/45">
+                        {t(`dynamicMemory.presetInfo.${currentPreset}` as const)}
+                      </p>
+                    </div>
                   )}
-                </AnimatePresence>
-              </div>
+                  {currentPreset === "custom" && (
+                    <div className="px-1">
+                      <p className="text-[11px] text-warning/70">
+                        {t("dynamicMemory.page.customSettings")}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Context Enrichment (v2/v3) */}
+                {supportsExtendedTokenCapacity && currentEnabled && (
+                  <div className={cn("rounded-xl border border-fg/10 bg-fg/5 px-4 py-3")}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-sm font-medium text-fg">
+                            {t("dynamicMemory.page.contextEnrichment")}
+                          </span>
+                          <span className="rounded-md border border-info/30 bg-info/10 px-1.5 py-0.5 text-[10px] font-medium text-info/80">
+                            {t("dynamicMemory.page.experimental")}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-fg/45 leading-relaxed">
+                          {t("dynamicMemory.page.contextEnrichmentDescription")}
+                        </div>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={currentSettings.contextEnrichmentEnabled}
+                          onChange={(e) => {
+                            if (activeTab === "direct") {
+                              handleDirectSettingChange(
+                                "contextEnrichmentEnabled",
+                                e.target.checked,
+                              );
+                            } else {
+                              handleGroupSettingChange(
+                                "contextEnrichmentEnabled",
+                                e.target.checked,
+                              );
+                            }
+                          }}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-fg/10 rounded-full peer peer-checked:bg-info transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-fg after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div>
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {/* Advanced Options Collapsible */}
+                <div className="rounded-xl border border-fg/10 bg-fg/5 overflow-hidden">
+                  <button
+                    onClick={() => setAdvancedOpen(!advancedOpen)}
+                    className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-fg/5 transition-colors"
+                  >
+                    <div>
+                      <span className="text-sm font-medium text-fg">
+                        {t("dynamicMemory.page.advancedOptions")}
+                      </span>
+                      <p className="text-[11px] text-fg/45 mt-0.5">
+                        {t("dynamicMemory.page.advancedOptionsDescription")}
+                      </p>
+                    </div>
+                    <ChevronDown
+                      className={cn(
+                        "h-5 w-5 text-fg/40 transition-transform",
+                        advancedOpen && "rotate-180",
+                      )}
+                    />
+                  </button>
+
+                  <AnimatePresence>
+                    {advancedOpen && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="px-4 pb-4 space-y-4 border-t border-fg/10 pt-4">
+                          {/* Summary Interval */}
+                          <SettingRow
+                            label={t("dynamicMemory.page.summaryInterval")}
+                            description={t("dynamicMemory.page.summaryIntervalDescription")}
+                            value={currentSettings.summaryMessageInterval}
+                            unit={t("dynamicMemory.page.msgsUnit")}
+                            min={10}
+                            max={100}
+                            step={5}
+                            onChange={(val) => {
+                              if (activeTab === "direct") {
+                                handleDirectSettingChange("summaryMessageInterval", val);
+                              } else {
+                                handleGroupSettingChange("summaryMessageInterval", val);
+                              }
+                            }}
+                          />
+
+                          {/* Max Entries */}
+                          <SettingRow
+                            label={t("dynamicMemory.page.maxMemoryEntries")}
+                            description={t("dynamicMemory.page.maxMemoryEntriesDescription")}
+                            value={currentSettings.maxEntries}
+                            unit={t("dynamicMemory.page.entriesUnit")}
+                            min={10}
+                            max={200}
+                            step={10}
+                            onChange={(val) => {
+                              if (activeTab === "direct") {
+                                handleDirectSettingChange("maxEntries", val);
+                              } else {
+                                handleGroupSettingChange("maxEntries", val);
+                              }
+                            }}
+                          />
+
+                          {/* Hot Memory Budget */}
+                          <SettingRow
+                            label={t("dynamicMemory.page.hotMemoryBudget")}
+                            description={t("dynamicMemory.page.hotMemoryBudgetDescription")}
+                            value={currentSettings.hotMemoryTokenBudget}
+                            unit={t("dynamicMemory.page.tokensUnit")}
+                            min={500}
+                            max={10000}
+                            step={500}
+                            onChange={(val) => {
+                              if (activeTab === "direct") {
+                                handleDirectSettingChange("hotMemoryTokenBudget", val);
+                              } else {
+                                handleGroupSettingChange("hotMemoryTokenBudget", val);
+                              }
+                            }}
+                          />
+
+                          {/* Relevance Threshold */}
+                          <SettingRow
+                            label={t("dynamicMemory.page.relevanceThreshold")}
+                            description={t("dynamicMemory.page.relevanceThresholdDescription")}
+                            value={currentSettings.minSimilarityThreshold}
+                            min={0.1}
+                            max={0.8}
+                            step={0.05}
+                            decimals={2}
+                            onChange={(val) => {
+                              if (activeTab === "direct") {
+                                handleDirectSettingChange("minSimilarityThreshold", val);
+                              } else {
+                                handleGroupSettingChange("minSimilarityThreshold", val);
+                              }
+                            }}
+                          />
+
+                          {/* Retrieval Limit */}
+                          <div className="space-y-2">
+                            <div className="text-[11px] font-medium text-fg/90">
+                              {t("dynamicMemory.page.retrievalMode")}
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                onClick={() => {
+                                  if (activeTab === "direct") {
+                                    handleDirectSettingChange("retrievalStrategy", "smart");
+                                  } else {
+                                    handleGroupSettingChange("retrievalStrategy", "smart");
+                                  }
+                                }}
+                                className={cn(
+                                  "rounded-lg border px-3 py-2 text-xs font-medium transition-colors",
+                                  currentSettings.retrievalStrategy === "smart"
+                                    ? "border-info/50 bg-info/20 text-info"
+                                    : "border-fg/10 bg-fg/5 text-fg/60 hover:border-fg/20",
+                                )}
+                              >
+                                {t("dynamicMemory.page.retrievalModeSmart")}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (activeTab === "direct") {
+                                    handleDirectSettingChange("retrievalStrategy", "cosine");
+                                  } else {
+                                    handleGroupSettingChange("retrievalStrategy", "cosine");
+                                  }
+                                }}
+                                className={cn(
+                                  "rounded-lg border px-3 py-2 text-xs font-medium transition-colors",
+                                  currentSettings.retrievalStrategy === "cosine"
+                                    ? "border-info/50 bg-info/20 text-info"
+                                    : "border-fg/10 bg-fg/5 text-fg/60 hover:border-fg/20",
+                                )}
+                              >
+                                {t("dynamicMemory.page.retrievalModeCosine")}
+                              </button>
+                            </div>
+                            <p className="text-[11px] text-fg/45">
+                              {t("dynamicMemory.page.retrievalModeDescription")}
+                            </p>
+                          </div>
+
+                          {/* Retrieval Limit */}
+                          <SettingRow
+                            label={t("dynamicMemory.page.retrievalLimit")}
+                            description={t("dynamicMemory.page.retrievalLimitDescription")}
+                            value={currentSettings.retrievalLimit}
+                            unit={t("dynamicMemory.page.itemsUnit")}
+                            min={1}
+                            max={20}
+                            step={1}
+                            onChange={(val) => {
+                              if (activeTab === "direct") {
+                                handleDirectSettingChange("retrievalLimit", val);
+                              } else {
+                                handleGroupSettingChange("retrievalLimit", val);
+                              }
+                            }}
+                          />
+
+                          {/* Decay Rate */}
+                          <SettingRow
+                            label={t("dynamicMemory.page.decayRate")}
+                            description={t("dynamicMemory.page.decayRateDescription")}
+                            value={currentSettings.decayRate}
+                            unit={t("dynamicMemory.page.perCycleUnit")}
+                            min={0.01}
+                            max={0.3}
+                            step={0.01}
+                            decimals={2}
+                            onChange={(val) => {
+                              if (activeTab === "direct") {
+                                handleDirectSettingChange("decayRate", val);
+                              } else {
+                                handleGroupSettingChange("decayRate", val);
+                              }
+                            }}
+                          />
+
+                          {/* Cold Threshold */}
+                          <SettingRow
+                            label={t("dynamicMemory.page.coldStorageThreshold")}
+                            description={t("dynamicMemory.page.coldStorageThresholdDescription")}
+                            value={currentSettings.coldThreshold}
+                            min={0.1}
+                            max={0.5}
+                            step={0.05}
+                            decimals={2}
+                            onChange={(val) => {
+                              if (activeTab === "direct") {
+                                handleDirectSettingChange("coldThreshold", val);
+                              } else {
+                                handleGroupSettingChange("coldThreshold", val);
+                              }
+                            }}
+                          />
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
               </div>
             </motion.div>
           </AnimatePresence>
@@ -847,7 +861,7 @@ export function DynamicMemoryPage() {
           {isAnyEnabled && (
             <div className="space-y-4 pt-2">
               <h3 className="text-[10px] font-semibold uppercase tracking-[0.25em] text-fg/35 px-1">
-                Shared Settings
+                {t("dynamicMemory.page.sharedSettings")}
               </h3>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -857,7 +871,9 @@ export function DynamicMemoryPage() {
                     <div className="rounded-lg border border-warning/30 bg-warning/10 p-1.5">
                       <Cpu className="h-4 w-4 text-warning" />
                     </div>
-                    <h3 className="text-sm font-semibold text-fg">Summarisation Model</h3>
+                    <h3 className="text-sm font-semibold text-fg">
+                      {t("dynamicMemory.page.summarisationModel")}
+                    </h3>
                   </div>
 
                   {models.length > 0 ? (
@@ -876,23 +892,27 @@ export function DynamicMemoryPage() {
                           className={`text-sm ${summarisationModelId ? "text-fg" : "text-fg/50"}`}
                         >
                           {summarisationModelId
-                            ? selectedSummarisationModel?.displayName || "Selected Model"
-                            : "Use global default model"}
+                            ? selectedSummarisationModelLabel
+                            : t("dynamicMemory.page.useGlobalDefaultModel")}
                         </span>
                       </div>
                       <ChevronDown className="h-4 w-4 text-fg/40" />
                     </button>
                   ) : (
                     <div className="rounded-xl border border-fg/10 bg-surface-el/20 px-4 py-3">
-                      <p className="text-sm text-fg/50">No models available</p>
+                      <p className="text-sm text-fg/50">
+                        {t("dynamicMemory.page.noModelsAvailable")}
+                      </p>
                     </div>
                   )}
-                  <p className="text-xs text-fg/50">Used for conversation summarization</p>
+                  <p className="text-xs text-fg/50">
+                    {t("dynamicMemory.page.summarisationModelDescription")}
+                  </p>
 
                   {/* Desktop: Model Management under Summarisation to avoid large left-column gap */}
                   <div className="hidden lg:block space-y-3 pt-4">
                     <h3 className="text-[10px] font-semibold uppercase tracking-[0.25em] text-fg/35 px-1">
-                      Model Management
+                      {t("dynamicMemory.page.modelManagement")}
                     </h3>
                     <div className="grid grid-cols-2 gap-3">
                       <button
@@ -906,7 +926,7 @@ export function DynamicMemoryPage() {
                         )}
                       >
                         <RefreshCw className="h-4 w-4" />
-                        Test Model
+                        {t("dynamicMemory.page.testModel")}
                       </button>
                       {!hasBothMajorEmbeddingVersionsInstalled && (
                         <button
@@ -919,7 +939,7 @@ export function DynamicMemoryPage() {
                           )}
                         >
                           <Sparkles className="h-4 w-4" />
-                          Download Model
+                          {t("dynamicMemory.page.downloadModel")}
                         </button>
                       )}
                       <button
@@ -933,7 +953,7 @@ export function DynamicMemoryPage() {
                         )}
                       >
                         <Trash2 className="h-4 w-4" />
-                        Delete
+                        {t("dynamicMemory.page.delete")}
                       </button>
                     </div>
                   </div>
@@ -944,7 +964,9 @@ export function DynamicMemoryPage() {
                   {availableEmbeddingVersions.filter((v) => v === "v2" || v === "v3").length >
                     1 && (
                     <div className="rounded-xl border border-fg/10 bg-fg/5 px-4 py-3">
-                      <div className="mb-2 text-sm font-medium text-fg">Embedding Model</div>
+                      <div className="mb-2 text-sm font-medium text-fg">
+                        {t("dynamicMemory.page.embeddingModel")}
+                      </div>
                       <div className="grid grid-cols-2 gap-2">
                         {(["v2", "v3"] as const)
                           .filter((version) => availableEmbeddingVersions.includes(version))
@@ -969,7 +991,9 @@ export function DynamicMemoryPage() {
                   {supportsExtendedTokenCapacity && (
                     <div className="rounded-xl border border-fg/10 bg-fg/5 px-4 py-3">
                       <div className="flex items-center justify-between gap-2 mb-2">
-                        <span className="text-sm font-medium text-fg">Token Capacity</span>
+                        <span className="text-sm font-medium text-fg">
+                          {t("dynamicMemory.page.tokenCapacity")}
+                        </span>
                         <span
                           className={cn(
                             "rounded-md border border-fg/10 bg-fg/10 px-2 py-1",
@@ -977,11 +1001,11 @@ export function DynamicMemoryPage() {
                             "text-fg/70",
                           )}
                         >
-                          {embeddingMaxTokens} tokens
+                          {embeddingMaxTokens} {t("dynamicMemory.page.tokensUnit")}
                         </span>
                       </div>
                       <p className="text-[11px] text-fg/45 mb-3">
-                        Higher values = better memory for longer conversations
+                        {t("dynamicMemory.page.tokenCapacityDescription")}
                       </p>
                       <div className="grid grid-cols-3 gap-2">
                         {[1024, 2048, 4096].map((val) => (
@@ -1008,14 +1032,14 @@ export function DynamicMemoryPage() {
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-sm font-medium text-fg">
-                              Keep Model Loaded
+                              {t("dynamicMemory.page.keepModelLoaded")}
                             </span>
                             <span className="rounded-md border border-info/30 bg-info/10 px-1.5 py-0.5 text-[10px] font-medium text-info/80">
-                              Experimental
+                              {t("dynamicMemory.page.experimental")}
                             </span>
                           </div>
                           <div className="text-[11px] text-fg/45 leading-relaxed">
-                            Keeps embedding model + tokenizer in memory to avoid reload overhead
+                            {t("dynamicMemory.page.keepModelLoadedDescription")}
                           </div>
                         </div>
                         <label className="relative inline-flex items-center cursor-pointer shrink-0">
@@ -1034,8 +1058,10 @@ export function DynamicMemoryPage() {
                   {/* Model info */}
                   {modelVersion && (
                     <div className="text-xs text-fg/40 px-1">
-                      Installed model: {modelSourceVersion ?? modelVersion} ({embeddingMaxTokens}{" "}
-                      max tokens)
+                      {t("dynamicMemory.page.installedModel", {
+                        version: modelSourceVersion ?? modelVersion,
+                        tokens: embeddingMaxTokens,
+                      })}
                     </div>
                   )}
                 </div>
@@ -1047,7 +1073,7 @@ export function DynamicMemoryPage() {
           {isAnyEnabled && (
             <div className="space-y-3 pt-2 lg:hidden">
               <h3 className="text-[10px] font-semibold uppercase tracking-[0.25em] text-fg/35 px-1">
-                Model Management
+                {t("dynamicMemory.page.modelManagement")}
               </h3>
 
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -1062,7 +1088,7 @@ export function DynamicMemoryPage() {
                   )}
                 >
                   <RefreshCw className="h-4 w-4" />
-                  Test Model
+                  {t("dynamicMemory.page.testModel")}
                 </button>
                 {!hasBothMajorEmbeddingVersionsInstalled && (
                   <button
@@ -1075,7 +1101,7 @@ export function DynamicMemoryPage() {
                     )}
                   >
                     <Sparkles className="h-4 w-4" />
-                    Download Model
+                    {t("dynamicMemory.page.downloadModel")}
                   </button>
                 )}
 
@@ -1090,7 +1116,7 @@ export function DynamicMemoryPage() {
                   )}
                 >
                   <Trash2 className="h-4 w-4" />
-                  Delete
+                  {t("dynamicMemory.page.delete")}
                 </button>
               </div>
             </div>
@@ -1102,11 +1128,11 @@ export function DynamicMemoryPage() {
       <BottomMenu
         isOpen={showDownloadModelMenu}
         onClose={() => setShowDownloadModelMenu(false)}
-        title="Download Embedding Model"
+        title={t("dynamicMemory.page.downloadEmbeddingModel")}
       >
         <div className="space-y-3">
           <p className="text-xs text-fg/55">
-            Choose which version to download. Installed versions are disabled.
+            {t("dynamicMemory.page.downloadEmbeddingDescription")}
           </p>
           <button
             onClick={() => {
@@ -1126,16 +1152,18 @@ export function DynamicMemoryPage() {
                 <Boxes className="h-4 w-4" />
               </div>
               <div>
-                <div className="text-sm font-medium">Download v2</div>
+                <div className="text-sm font-medium">
+                  {t("dynamicMemory.page.downloadVersion", { version: "v2" })}
+                </div>
                 <div className="text-[11px] text-fg/45">
-                  Optimized for accuracy and long-context recall
+                  {t("dynamicMemory.page.downloadV2Description")}
                 </div>
               </div>
             </div>
             {hasV2Installed && (
               <span className="flex items-center gap-1 text-xs text-fg/45">
                 <Check className="h-3.5 w-3.5" />
-                Installed
+                {t("dynamicMemory.page.installed")}
               </span>
             )}
           </button>
@@ -1157,14 +1185,18 @@ export function DynamicMemoryPage() {
                 <Rocket className="h-4 w-4" />
               </div>
               <div>
-                <div className="text-sm font-medium">Download v3</div>
-                <div className="text-[11px] text-fg/45">Latest embedding quality</div>
+                <div className="text-sm font-medium">
+                  {t("dynamicMemory.page.downloadVersion", { version: "v3" })}
+                </div>
+                <div className="text-[11px] text-fg/45">
+                  {t("dynamicMemory.page.downloadV3Description")}
+                </div>
               </div>
             </div>
             {hasV3Installed && (
               <span className="flex items-center gap-1 text-xs text-fg/45">
                 <Check className="h-3.5 w-3.5" />
-                Installed
+                {t("dynamicMemory.page.installed")}
               </span>
             )}
           </button>
@@ -1178,7 +1210,7 @@ export function DynamicMemoryPage() {
           setShowModelMenu(false);
           setModelSearchQuery("");
         }}
-        title="Select Model"
+        title={t("dynamicMemory.page.selectModel")}
       >
         <div className="space-y-4">
           <div className="relative">
@@ -1186,7 +1218,7 @@ export function DynamicMemoryPage() {
               type="text"
               value={modelSearchQuery}
               onChange={(e) => setModelSearchQuery(e.target.value)}
-              placeholder="Search models..."
+              placeholder={t("dynamicMemory.page.searchModels")}
               className="w-full rounded-xl border border-fg/10 bg-surface-el/30 px-4 py-2.5 pl-10 text-sm text-fg placeholder-fg/40 focus:border-fg/20 focus:outline-none"
             />
             <svg
@@ -1218,7 +1250,9 @@ export function DynamicMemoryPage() {
               )}
             >
               <Cpu className="h-5 w-5 text-fg/40" />
-              <span className="text-sm text-fg">Use global default model</span>
+              <span className="text-sm text-fg">
+                {t("dynamicMemory.page.useGlobalDefaultModel")}
+              </span>
               {!summarisationModelId && <Check className="h-4 w-4 ml-auto text-accent" />}
             </button>
             {models

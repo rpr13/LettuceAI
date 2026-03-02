@@ -542,6 +542,10 @@ export function CreationHelperPage() {
   const selectedModel = selectedModelId ? models.find((m) => m.id === selectedModelId) : null;
   const defaultModel = defaultModelId ? models.find((m) => m.id === defaultModelId) : null;
   const selectedImageModel = imageModelId ? models.find((m) => m.id === imageModelId) : null;
+  const selectedModelLabel = selectedModel?.displayName || t("creationHelper.page.selectedModel");
+  const chatDefaultLabel = t("creationHelper.page.useAppDefault", {
+    model: defaultModel ? ` (${defaultModel.displayName})` : "",
+  });
 
   const currentPreset = useMemo(() => {
     for (const preset of TOOL_PRESETS) {
@@ -579,8 +583,7 @@ export function CreationHelperPage() {
             <div className="flex items-start gap-2">
               <Sparkles className="h-4 w-4 text-danger shrink-0 mt-0.5" />
               <p className="text-xs text-danger/80 leading-relaxed">
-                Creation Helper guides you through building characters with AI assistance. Configure
-                the model and tools used during character creation.
+                {t("creationHelper.page.info")}
               </p>
             </div>
           </div>
@@ -590,7 +593,7 @@ export function CreationHelperPage() {
             {/* Left Column - Model Configuration */}
             <div className="space-y-4">
               <h3 className="text-[10px] font-semibold uppercase tracking-[0.25em] text-fg/35 px-1">
-                Model Configuration
+                {t("creationHelper.page.modelConfiguration")}
               </h3>
 
               {/* Chat Model Selector */}
@@ -599,7 +602,9 @@ export function CreationHelperPage() {
                   <div className="rounded-lg border border-danger/30 bg-danger/10 p-1.5">
                     <MessageSquare className="h-4 w-4 text-danger" />
                   </div>
-                  <h3 className="text-sm font-semibold text-fg">Chat Model</h3>
+                  <h3 className="text-sm font-semibold text-fg">
+                    {t("creationHelper.page.chatModel")}
+                  </h3>
                 </div>
 
                 {textModels.length > 0 ? (
@@ -615,20 +620,20 @@ export function CreationHelperPage() {
                         <Cpu className="h-5 w-5 text-fg/40" />
                       )}
                       <span className={`text-sm ${selectedModelId ? "text-fg" : "text-fg/50"}`}>
-                        {selectedModelId
-                          ? selectedModel?.displayName || "Selected Model"
-                          : `Use app default${defaultModel ? ` (${defaultModel.displayName})` : ""}`}
+                        {selectedModelId ? selectedModelLabel : chatDefaultLabel}
                       </span>
                     </div>
                     <ChevronDown className="h-4 w-4 text-fg/40" />
                   </button>
                 ) : (
                   <div className="rounded-xl border border-fg/10 bg-surface-el/20 px-4 py-3">
-                    <p className="text-sm text-fg/50">No models available</p>
+                    <p className="text-sm text-fg/50">
+                      {t("creationHelper.page.noModelsAvailable")}
+                    </p>
                   </div>
                 )}
                 <p className="text-xs text-fg/50 px-1">
-                  AI model for character creation conversations
+                  {t("creationHelper.page.chatModelDescription")}
                 </p>
               </div>
 
@@ -640,8 +645,12 @@ export function CreationHelperPage() {
                       <Zap className="h-4 w-4 text-accent/80" />
                     </div>
                     <div>
-                      <span className="text-sm font-medium text-fg">Streaming Output</span>
-                      <p className="text-[11px] text-fg/45">Show responses as they're generated</p>
+                      <span className="text-sm font-medium text-fg">
+                        {t("creationHelper.page.streamingOutput")}
+                      </span>
+                      <p className="text-[11px] text-fg/45">
+                        {t("creationHelper.page.streamingDescription")}
+                      </p>
                     </div>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
@@ -674,7 +683,9 @@ export function CreationHelperPage() {
                   <div className="rounded-lg border border-warning/30 bg-warning/10 p-1.5">
                     <Image className="h-4 w-4 text-warning/80" />
                   </div>
-                  <h3 className="text-sm font-semibold text-fg">Image Generation Model</h3>
+                  <h3 className="text-sm font-semibold text-fg">
+                    {t("creationHelper.page.imageGenerationModel")}
+                  </h3>
                 </div>
 
                 {imageModels.length > 0 ? (
@@ -691,25 +702,30 @@ export function CreationHelperPage() {
                       )}
                       <span className={`text-sm ${imageModelId ? "text-fg" : "text-fg/50"}`}>
                         {imageModelId
-                          ? selectedImageModel?.displayName || "Selected Model"
-                          : "No model selected"}
+                          ? selectedImageModel?.displayName ||
+                            t("creationHelper.page.selectedModel")
+                          : t("creationHelper.page.noModelSelected")}
                       </span>
                     </div>
                     <ChevronDown className="h-4 w-4 text-fg/40" />
                   </button>
                 ) : (
                   <div className="rounded-xl border border-fg/10 bg-surface-el/20 px-4 py-3">
-                    <p className="text-sm text-fg/50">No image models available</p>
+                    <p className="text-sm text-fg/50">
+                      {t("creationHelper.page.noImageModelsAvailable")}
+                    </p>
                   </div>
                 )}
-                <p className="text-xs text-fg/50 px-1">For generating character avatars</p>
+                <p className="text-xs text-fg/50 px-1">
+                  {t("creationHelper.page.imageModelDescription")}
+                </p>
               </div>
             </div>
 
             {/* Right Column - Tool Selection */}
             <div className="space-y-4">
               <h3 className="text-[10px] font-semibold uppercase tracking-[0.25em] text-fg/35 px-1">
-                Tool Selection
+                {t("creationHelper.page.toolSelection")}
               </h3>
 
               {/* Smart Tool Selection Toggle */}
@@ -720,9 +736,11 @@ export function CreationHelperPage() {
                       <Wand2 className="h-4 w-4 text-info" />
                     </div>
                     <div>
-                      <span className="text-sm font-medium text-fg">Smart Tool Selection</span>
+                      <span className="text-sm font-medium text-fg">
+                        {t("creationHelper.page.smartToolSelection")}
+                      </span>
                       <p className="text-[11px] text-fg/45">
-                        AI automatically chooses which tools to use
+                        {t("creationHelper.page.smartToolDescription")}
                       </p>
                     </div>
                   </div>
@@ -750,8 +768,8 @@ export function CreationHelperPage() {
                 </div>
                 <div className="mt-3 rounded-lg border border-fg/10 bg-fg/5 px-3 py-2 text-[11px] text-fg/60">
                   {smartToolSelection
-                    ? "When enabled, the AI Creator Helper asks what you want to create and loads only the relevant tool set."
-                    : "When disabled, the AI Creator Helper opens directly and uses all enabled tools; the assistant decides what to build."}
+                    ? t("creationHelper.page.smartToolEnabledHint")
+                    : t("creationHelper.page.smartToolDisabledHint")}
                 </div>
               </div>
 
@@ -759,7 +777,9 @@ export function CreationHelperPage() {
               {!smartToolSelection && (
                 <>
                   <div className="space-y-3">
-                    <p className="text-xs text-fg/50 px-1">Quick Presets</p>
+                    <p className="text-xs text-fg/50 px-1">
+                      {t("creationHelper.page.quickPresets")}
+                    </p>
                     <div className="grid grid-cols-3 gap-2">
                       {TOOL_PRESETS.map((preset) => (
                         <button
@@ -782,7 +802,7 @@ export function CreationHelperPage() {
                     </div>
                     {currentPreset === "custom" && (
                       <p className="text-[11px] text-warning/70 px-1">
-                        Custom selection — {enabledTools.length} tools enabled
+                        {t("creationHelper.page.customSelection", { count: enabledTools.length })}
                       </p>
                     )}
                   </div>
@@ -908,11 +928,7 @@ export function CreationHelperPage() {
           >
             <Info className="mt-0.5 h-4 w-4 shrink-0 text-fg/30" />
             <div className="text-[11px] leading-relaxed text-fg/45">
-              <p>
-                When <strong className="text-fg/60">Smart Tool Selection</strong> is enabled, the AI
-                decides which tools to use based on context. Disable it to manually control which
-                tools are available.
-              </p>
+              <p>{t("creationHelper.page.footerInfo")}</p>
             </div>
           </div>
         </div>
@@ -925,7 +941,7 @@ export function CreationHelperPage() {
           setShowModelMenu(false);
           setModelSearchQuery("");
         }}
-        title="Select Chat Model"
+        title={t("creationHelper.page.selectChatModel")}
       >
         <div className="space-y-4">
           <div className="relative">
@@ -933,7 +949,7 @@ export function CreationHelperPage() {
               type="text"
               value={modelSearchQuery}
               onChange={(e) => setModelSearchQuery(e.target.value)}
-              placeholder="Search models..."
+              placeholder={t("creationHelper.page.searchModels")}
               className="w-full rounded-xl border border-fg/10 bg-surface-el/30 px-4 py-2.5 pl-10 text-sm text-fg placeholder-fg/40 focus:border-fg/20 focus:outline-none"
             />
             <svg
@@ -966,7 +982,9 @@ export function CreationHelperPage() {
             >
               <Cpu className="h-5 w-5 text-fg/40" />
               <div className="flex-1 min-w-0">
-                <span className="text-sm text-fg">Use app default</span>
+                <span className="text-sm text-fg">
+                  {t("creationHelper.page.useAppDefaultBase")}
+                </span>
                 {defaultModel && (
                   <span className="block truncate text-xs text-fg/40">
                     {defaultModel.displayName}
@@ -1022,7 +1040,7 @@ export function CreationHelperPage() {
           setShowImageModelMenu(false);
           setImageModelSearchQuery("");
         }}
-        title="Select Image Model"
+        title={t("creationHelper.page.selectImageModel")}
       >
         <div className="space-y-4">
           <div className="relative">
@@ -1030,7 +1048,7 @@ export function CreationHelperPage() {
               type="text"
               value={imageModelSearchQuery}
               onChange={(e) => setImageModelSearchQuery(e.target.value)}
-              placeholder="Search models..."
+              placeholder={t("creationHelper.page.searchModels")}
               className="w-full rounded-xl border border-fg/10 bg-surface-el/30 px-4 py-2.5 pl-10 text-sm text-fg placeholder-fg/40 focus:border-fg/20 focus:outline-none"
             />
             <svg
@@ -1062,7 +1080,7 @@ export function CreationHelperPage() {
               )}
             >
               <Image className="h-5 w-5 text-fg/40" />
-              <span className="text-sm text-fg">No model selected</span>
+              <span className="text-sm text-fg">{t("creationHelper.page.noModelSelected")}</span>
               {!imageModelId && <Check className="h-4 w-4 ml-auto text-accent/80" />}
             </button>
             {imageModels

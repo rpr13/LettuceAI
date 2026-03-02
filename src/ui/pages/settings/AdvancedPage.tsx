@@ -527,7 +527,10 @@ export function AdvancedPage() {
         </SettingsSection>
 
         {/* Memory System Section */}
-        <SettingsSection title={t("advanced.sectionTitles.memorySystem")} icon={<Brain size={12} />}>
+        <SettingsSection
+          title={t("advanced.sectionTitles.memorySystem")}
+          icon={<Brain size={12} />}
+        >
           <FeatureCard
             title={t("advanced.dynamicMemory.title")}
             description={
@@ -588,7 +591,10 @@ export function AdvancedPage() {
         </SettingsSection>
 
         {/* Usage Analytics Section */}
-        <SettingsSection title={t("advanced.sectionTitles.usageAnalytics")} icon={<DollarSign size={12} />}>
+        <SettingsSection
+          title={t("advanced.sectionTitles.usageAnalytics")}
+          icon={<DollarSign size={12} />}
+        >
           <div className={cn("rounded-xl border px-4 py-4", "border-fg/10 bg-fg/5")}>
             <div className="flex items-start gap-3">
               <div
@@ -635,7 +641,7 @@ export function AdvancedPage() {
 
                 {!openRouterApiKey && (
                   <p className="mt-2 text-[11px] text-danger/70">
-                    OpenRouter API key required. Configure it in Settings → Providers.
+                    {t("advanced.usageAnalytics.openRouterApiKeyRequired")}
                   </p>
                 )}
 
@@ -667,14 +673,10 @@ export function AdvancedPage() {
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-fg/30" />
           <div className="text-[11px] leading-relaxed text-fg/45">
             <p>
-              <strong className="text-fg/60">Dynamic Memory</strong> uses AI to automatically
-              summarize and manage conversation context, enabling longer, more coherent
-              conversations.
+              <strong className="text-fg/60">{t("advanced.dynamicMemory.title")}</strong>{" "}
+              {t("advanced.dynamicMemory.infoText")}
             </p>
-            <p className="mt-2">
-              When disabled, the app uses a simple sliding window of recent messages determined by
-              the Context Window setting.
-            </p>
+            <p className="mt-2">{t("advanced.dynamicMemory.disabledText")}</p>
           </div>
         </div>
       </section>
@@ -705,7 +707,9 @@ export function AdvancedPage() {
           </div>
 
           <div className={cn("rounded-xl border border-fg/10 bg-fg/5 p-3")}>
-            <p className="text-xs font-medium text-fg/70 mb-2">{t("advanced.usageAnalytics.importantLabel")}</p>
+            <p className="text-xs font-medium text-fg/70 mb-2">
+              {t("advanced.usageAnalytics.importantLabel")}
+            </p>
             <ul className="space-y-1.5 text-xs text-fg/60">
               <li className="flex items-start gap-2">
                 <span className="text-warning mt-0.5">•</span>

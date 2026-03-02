@@ -116,6 +116,10 @@ export function HelpMeReplyPage() {
 
   const selectedModel = selectedModelId ? models.find((m) => m.id === selectedModelId) : null;
   const defaultModel = defaultModelId ? models.find((m) => m.id === defaultModelId) : null;
+  const selectedModelLabel = selectedModel?.displayName || t("helpMeReply.labels.selectedModel");
+  const appDefaultLabel = t("helpMeReply.labels.useAppDefault", {
+    model: defaultModel ? ` (${defaultModel.displayName})` : "",
+  });
 
   if (isLoading) {
     return null;
@@ -129,10 +133,7 @@ export function HelpMeReplyPage() {
           <div className={cn("rounded-xl border border-accent/20 bg-accent/5 p-3")}>
             <div className="flex items-start gap-2">
               <MessageSquare className="h-4 w-4 text-accent shrink-0 mt-0.5" />
-              <p className="text-xs text-accent/80 leading-relaxed">
-                Help Me Reply generates contextual suggestions for your next message based on
-                conversation history. Configure the model and response style below.
-              </p>
+              <p className="text-xs text-accent/80 leading-relaxed">{t("helpMeReply.page.info")}</p>
             </div>
           </div>
 
@@ -150,7 +151,9 @@ export function HelpMeReplyPage() {
                   <div className="rounded-lg border border-accent/30 bg-accent/10 p-1.5">
                     <Cpu className="h-4 w-4 text-accent" />
                   </div>
-                  <h3 className="text-sm font-semibold text-fg">Reply Model</h3>
+                  <h3 className="text-sm font-semibold text-fg">
+                    {t("helpMeReply.labels.replyModel")}
+                  </h3>
                 </div>
 
                 {models.length > 0 ? (
@@ -165,23 +168,21 @@ export function HelpMeReplyPage() {
                       ) : (
                         <Cpu className="h-5 w-5 text-fg/40" />
                       )}
-                      <span
-                        className={`text-sm ${selectedModelId ? "text-fg" : "text-fg/50"}`}
-                      >
-                        {selectedModelId
-                          ? selectedModel?.displayName || "Selected Model"
-                          : `Use app default${defaultModel ? ` (${defaultModel.displayName})` : ""}`}
+                      <span className={`text-sm ${selectedModelId ? "text-fg" : "text-fg/50"}`}>
+                        {selectedModelId ? selectedModelLabel : appDefaultLabel}
                       </span>
                     </div>
                     <ChevronDown className="h-4 w-4 text-fg/40" />
                   </button>
                 ) : (
                   <div className="rounded-xl border border-fg/10 bg-surface-el/20 px-4 py-3">
-                    <p className="text-sm text-fg/50">No models available</p>
+                    <p className="text-sm text-fg/50">
+                      {t("helpMeReply.labels.noModelsAvailable")}
+                    </p>
                   </div>
                 )}
                 <p className="text-xs text-fg/50 px-1">
-                  AI model for generating reply suggestions
+                  {t("helpMeReply.labels.replyModelDescription")}
                 </p>
               </div>
 
@@ -193,9 +194,11 @@ export function HelpMeReplyPage() {
                       <Zap className="h-4 w-4 text-info" />
                     </div>
                     <div>
-                      <span className="text-sm font-medium text-fg">Streaming Output</span>
+                      <span className="text-sm font-medium text-fg">
+                        {t("helpMeReply.labels.streamingOutput")}
+                      </span>
                       <p className="text-[11px] text-fg/45">
-                        Show suggestions as they're generated
+                        {t("helpMeReply.labels.streamingDescription")}
                       </p>
                     </div>
                   </div>
@@ -231,8 +234,12 @@ export function HelpMeReplyPage() {
                       <Hash className="h-4 w-4 text-warning" />
                     </div>
                     <div>
-                      <span className="text-sm font-medium text-fg">Max Tokens</span>
-                      <p className="text-[11px] text-fg/45">Maximum length of suggestions</p>
+                      <span className="text-sm font-medium text-fg">
+                        {t("helpMeReply.labels.maxTokens")}
+                      </span>
+                      <p className="text-[11px] text-fg/45">
+                        {t("helpMeReply.labels.maxTokensDescription")}
+                      </p>
                     </div>
                   </div>
                   <input
@@ -372,8 +379,8 @@ export function HelpMeReplyPage() {
 
               <p className="text-xs text-fg/50 px-1">
                 {replyStyle === "conversational"
-                  ? "Suggestions will be written as natural dialogue, suitable for casual chats."
-                  : "Suggestions will include roleplay elements like *actions* and narrative descriptions."}
+                  ? t("helpMeReply.labels.conversationalHint")
+                  : t("helpMeReply.labels.roleplayHint")}
               </p>
             </div>
           </div>
@@ -388,10 +395,7 @@ export function HelpMeReplyPage() {
           >
             <Info className="mt-0.5 h-4 w-4 shrink-0 text-fg/30" />
             <div className="text-[11px] leading-relaxed text-fg/45">
-              <p>
-                This setting applies globally across all conversations. Lower token counts generate
-                shorter, quicker suggestions while higher counts allow for more detailed responses.
-              </p>
+              <p>{t("helpMeReply.labels.footerInfo")}</p>
             </div>
           </div>
         </div>
@@ -404,7 +408,7 @@ export function HelpMeReplyPage() {
           setShowModelMenu(false);
           setModelSearchQuery("");
         }}
-        title="Select Reply Model"
+        title={t("helpMeReply.labels.selectReplyModel")}
       >
         <div className="space-y-4">
           <div className="relative">
@@ -412,7 +416,7 @@ export function HelpMeReplyPage() {
               type="text"
               value={modelSearchQuery}
               onChange={(e) => setModelSearchQuery(e.target.value)}
-              placeholder="Search models..."
+              placeholder={t("helpMeReply.labels.searchModels")}
               className="w-full rounded-xl border border-fg/10 bg-surface-el/30 px-4 py-2.5 pl-10 text-sm text-fg placeholder-fg/40 focus:border-fg/20 focus:outline-none"
             />
             <svg
@@ -445,7 +449,7 @@ export function HelpMeReplyPage() {
             >
               <Cpu className="h-5 w-5 text-fg/40" />
               <div className="flex-1 min-w-0">
-                <span className="text-sm text-fg">Use app default</span>
+                <span className="text-sm text-fg">{t("helpMeReply.labels.useAppDefaultBase")}</span>
                 {defaultModel && (
                   <span className="block truncate text-xs text-fg/40">
                     {defaultModel.displayName}

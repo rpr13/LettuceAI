@@ -368,7 +368,9 @@ export function GroupChatSettingsPage() {
             </button>
             <div className="min-w-0 flex-1 text-left">
               <p className="truncate text-xl font-bold text-fg/90">{t("common.nav.settings")}</p>
-              <p className="mt-0.5 truncate text-xs text-fg/50">Manage group chat preferences</p>
+              <p className="mt-0.5 truncate text-xs text-fg/50">
+                {t("groupChats.sessionSettings.subtitle")}
+              </p>
             </div>
           </div>
         </div>
@@ -433,7 +435,7 @@ export function GroupChatSettingsPage() {
                         "border-b border-accent/50 focus:border-accent",
                         "focus:outline-none transition-colors",
                       )}
-                      placeholder="Enter group name"
+                      placeholder={t("groupChats.sessionSettings.enterGroupName")}
                       autoFocus
                     />
                     <button
@@ -478,9 +480,14 @@ export function GroupChatSettingsPage() {
                       </p>
                       <p className={cn(typography.caption.size, "text-fg/45 mt-0.5")}>
                         {groupCharacters.length}{" "}
-                        {groupCharacters.length === 1 ? "participant" : "participants"}
+                        {groupCharacters.length === 1
+                          ? t("groupChats.sessionSettings.participant")
+                          : t("groupChats.sessionSettings.participants")}
                         <span className="opacity-50 mx-1.5">•</span>
-                        {messageCount} {messageCount === 1 ? "message" : "messages"}
+                        {messageCount}{" "}
+                        {messageCount === 1
+                          ? t("groupChats.sessionSettings.message")
+                          : t("groupChats.sessionSettings.messages")}
                       </p>
                     </div>
                     <Edit2 className="h-4 w-4 shrink-0 text-fg/30 transition-colors group-hover:text-fg/60" />
@@ -501,10 +508,10 @@ export function GroupChatSettingsPage() {
                   <ImageIcon className="h-4 w-4" />
                   <span className={cn(typography.caption.size)}>
                     {savingBackground
-                      ? "Uploading..."
+                      ? t("groupChats.sessionSettings.uploading")
                       : backgroundImagePath
-                        ? "Change background"
-                        : "Add background image"}
+                        ? t("groupChats.sessionSettings.changeBackground")
+                        : t("groupChats.sessionSettings.addBackgroundImage")}
                   </span>
                   <input
                     type="file"
@@ -567,7 +574,10 @@ export function GroupChatSettingsPage() {
 
           {/* Persona Section */}
           <section className={spacing.item}>
-            <SectionHeader title="Persona" subtitle="Your identity in this conversation" />
+            <SectionHeader
+              title={t("groupChats.sessionSettings.persona")}
+              subtitle={t("groupChats.sessionSettings.personaSubtitle")}
+            />
             <QuickChip
               icon={
                 personaAvatarUrl ? (
@@ -583,7 +593,7 @@ export function GroupChatSettingsPage() {
                   <User className="h-4 w-4" />
                 )
               }
-              label="Persona"
+              label={t("groupChats.sessionSettings.personaLabel")}
               value={currentPersonaDisplay}
               onClick={() => setShowPersonaSelector(true)}
             />
@@ -591,26 +601,29 @@ export function GroupChatSettingsPage() {
 
           {/* Speaker Selection Method */}
           <section className={spacing.item}>
-            <SectionHeader title="Speaker Selection" subtitle="How the next speaker is chosen" />
+            <SectionHeader
+              title={t("groupChats.sessionSettings.speakerSelection")}
+              subtitle={t("groupChats.sessionSettings.speakerSubtitle")}
+            />
             <div className="grid grid-cols-3 gap-2">
               {(
                 [
                   {
                     value: "llm" as const,
-                    label: "LLM",
-                    desc: "AI picks",
+                    label: t("groupChats.sessionSettings.llm"),
+                    desc: t("groupChats.sessionSettings.aiPicks"),
                     icon: Brain,
                   },
                   {
                     value: "heuristic" as const,
-                    label: "Heuristic",
-                    desc: "Score-based",
+                    label: t("groupChats.sessionSettings.heuristic"),
+                    desc: t("groupChats.sessionSettings.scoreBased"),
                     icon: BarChart3,
                   },
                   {
                     value: "round_robin" as const,
-                    label: "Round Robin",
-                    desc: "Take turns",
+                    label: t("groupChats.sessionSettings.roundRobin"),
+                    desc: t("groupChats.sessionSettings.takeTurns"),
                     icon: RefreshCw,
                   },
                 ] as const
@@ -654,10 +667,10 @@ export function GroupChatSettingsPage() {
             </div>
             <p className={cn(typography.caption.size, "mt-2 text-fg/40")}>
               {session.speakerSelectionMethod === "llm"
-                ? "Uses your default model to choose who speaks (costs tokens)"
+                ? t("groupChats.sessionSettings.llmDesc")
                 : session.speakerSelectionMethod === "heuristic"
-                  ? "Uses participation balance and context clues (free)"
-                  : "Characters take turns in order (free)"}
+                  ? t("groupChats.sessionSettings.heuristicDesc")
+                  : t("groupChats.sessionSettings.roundRobinDesc")}
             </p>
           </section>
 
@@ -665,8 +678,13 @@ export function GroupChatSettingsPage() {
           <section className={spacing.item}>
             <div className="flex items-center justify-between mb-3">
               <SectionHeader
-                title="Characters"
-                subtitle={`${groupCharacters.length} participants · ${groupCharacters.length - (session?.mutedCharacterIds?.length ?? 0)} active`}
+                title={t("groupChats.sessionSettings.characters")}
+                subtitle={t("groupChats.sessionSettings.participantsActive", {
+                  total: String(groupCharacters.length),
+                  active: String(
+                    groupCharacters.length - (session?.mutedCharacterIds?.length ?? 0),
+                  ),
+                })}
               />
               <button
                 onClick={() => setShowAddCharacter(true)}
@@ -681,7 +699,7 @@ export function GroupChatSettingsPage() {
                 )}
               >
                 <Plus size={14} />
-                Add
+                {t("groupChats.sessionSettings.add")}
               </button>
             </div>
 
@@ -708,7 +726,11 @@ export function GroupChatSettingsPage() {
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-fg truncate">
                           {character.name}
-                          {isMuted && <span className="ml-2 text-[10px] text-fg/40">(muted)</span>}
+                          {isMuted && (
+                            <span className="ml-2 text-[10px] text-fg/40">
+                              {t("groupChats.sessionSettings.muted")}
+                            </span>
+                          )}
                         </p>
                         <div className="flex items-center gap-2 mt-1">
                           <div className="flex-1 h-1.5 rounded-full bg-fg/10 overflow-hidden">
@@ -728,7 +750,11 @@ export function GroupChatSettingsPage() {
                             ? "text-amber-300 hover:bg-amber-500/10"
                             : "text-fg/40 hover:text-fg hover:bg-fg/10",
                         )}
-                        title={isMuted ? "Unmute character" : "Mute character"}
+                        title={
+                          isMuted
+                            ? t("groupChats.sessionSettings.unmuteCharacter")
+                            : t("groupChats.sessionSettings.muteCharacter")
+                        }
                       >
                         {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
                       </button>
@@ -743,8 +769,8 @@ export function GroupChatSettingsPage() {
                         )}
                         title={
                           groupCharacters.length <= 2
-                            ? "Minimum 2 characters required"
-                            : "Remove character"
+                            ? t("groupChats.sessionSettings.minTwoRequired")
+                            : t("groupChats.sessionSettings.removeCharacter")
                         }
                       >
                         <Trash2 size={14} />
@@ -757,18 +783,20 @@ export function GroupChatSettingsPage() {
 
             {groupCharacters.length <= 2 && (
               <p className="mt-2 text-xs text-fg/40 text-center">
-                A group chat requires at least 2 characters
+                {t("groupChats.sessionSettings.groupMinCharacters")}
               </p>
             )}
             <p className="mt-2 text-xs text-fg/40 text-center">
-              Muted characters are skipped by auto speaker selection, but can still respond via
-              explicit `@mention`.
+              {t("groupChats.sessionSettings.mutedCharactersNote")}
             </p>
           </section>
 
           {/* Session Management */}
           <section className={spacing.item}>
-            <SectionHeader title="Data" subtitle="Export or import conversations" />
+            <SectionHeader
+              title={t("groupChats.sessionSettings.data")}
+              subtitle={t("groupChats.sessionSettings.dataSubtitle")}
+            />
             <div className={spacing.field}>
               <button
                 onClick={() => setShowChatpkgExportMenu(true)}
@@ -801,10 +829,10 @@ export function GroupChatSettingsPage() {
                         "text-fg/50",
                       )}
                     >
-                      Export
+                      {t("groupChats.sessionSettings.export")}
                     </div>
                     <div className={cn(typography.bodySmall.size, "text-fg truncate")}>
-                      Save as a shareable file
+                      {t("groupChats.sessionSettings.exportDesc")}
                     </div>
                   </div>
                 </div>
@@ -846,10 +874,10 @@ export function GroupChatSettingsPage() {
                         "text-fg/50",
                       )}
                     >
-                      Import
+                      {t("groupChats.sessionSettings.import")}
                     </div>
                     <div className={cn(typography.bodySmall.size, "text-fg truncate")}>
-                      Load a conversation from a file
+                      {t("groupChats.sessionSettings.importDesc")}
                     </div>
                   </div>
                 </div>
@@ -861,8 +889,8 @@ export function GroupChatSettingsPage() {
           {/* Session Management */}
           <section className={spacing.item}>
             <SectionHeader
-              title="Conversation"
-              subtitle="Duplicate or continue in a new chat"
+              title={t("groupChats.sessionSettings.conversation")}
+              subtitle={t("groupChats.sessionSettings.conversationSubtitle")}
             />
             <div className={spacing.field}>
               <button
@@ -896,10 +924,10 @@ export function GroupChatSettingsPage() {
                         "text-fg/50",
                       )}
                     >
-                      Duplicate
+                      {t("groupChats.sessionSettings.duplicate")}
                     </div>
                     <div className={cn(typography.bodySmall.size, "text-fg truncate")}>
-                      Copy this chat with or without messages
+                      {t("groupChats.sessionSettings.duplicateDesc")}
                     </div>
                   </div>
                 </div>
@@ -937,10 +965,10 @@ export function GroupChatSettingsPage() {
                         "text-fg/50",
                       )}
                     >
-                      Branch to 1-on-1
+                      {t("groupChats.sessionSettings.branchTo1on1")}
                     </div>
                     <div className={cn(typography.bodySmall.size, "text-fg truncate")}>
-                      Continue privately with one character
+                      {t("groupChats.sessionSettings.branchTo1on1Desc")}
                     </div>
                   </div>
                 </div>
@@ -953,8 +981,8 @@ export function GroupChatSettingsPage() {
           {participationStats.length > 0 && (
             <section className={spacing.item}>
               <SectionHeader
-                title="Participation"
-                subtitle="Speaking distribution across characters"
+                title={t("groupChats.sessionSettings.participation")}
+                subtitle={t("groupChats.sessionSettings.participationSubtitle")}
               />
               <div className={cn(radius.lg, "border border-fg/10 bg-surface-el/85 p-4")}>
                 {/* Visual bar */}
@@ -1029,12 +1057,12 @@ export function GroupChatSettingsPage() {
       <BottomMenu
         isOpen={showAddCharacter}
         onClose={() => setShowAddCharacter(false)}
-        title="Add Character"
+        title={t("groupChats.sessionSettings.addCharacterTitle")}
       >
         <div className="space-y-2 max-h-[60vh] overflow-y-auto">
           {availableCharacters.length === 0 ? (
             <div className="text-center py-8 text-fg/50 text-sm">
-              All characters are already in this group.
+              {t("groupChats.sessionSettings.allCharactersInGroup")}
             </div>
           ) : (
             availableCharacters.map((character) => (
@@ -1071,16 +1099,16 @@ export function GroupChatSettingsPage() {
       <BottomMenu
         isOpen={showRemoveConfirm !== null}
         onClose={() => setShowRemoveConfirm(null)}
-        title="Remove Character?"
+        title={t("groupChats.sessionSettings.removeCharacterTitle")}
       >
         {showRemoveConfirm && (
           <div className="space-y-4">
             <p className="text-sm text-fg/70">
-              Are you sure you want to remove{" "}
+              {t("groupChats.sessionSettings.removeCharacterConfirm")}{" "}
               <span className="font-medium text-fg">
                 {groupCharacters.find((c) => c.id === showRemoveConfirm)?.name}
               </span>{" "}
-              from this group chat?
+              {t("groupChats.sessionSettings.removeCharacterFrom")}
             </p>
             <div className="flex gap-3">
               <button
@@ -1088,14 +1116,16 @@ export function GroupChatSettingsPage() {
                 disabled={saving}
                 className="flex-1 rounded-xl border border-fg/10 bg-fg/5 py-3 text-sm font-medium text-fg transition hover:border-fg/20 hover:bg-fg/10 disabled:opacity-50"
               >
-                Cancel
+                {t("common.buttons.cancel")}
               </button>
               <button
                 onClick={() => handleRemoveCharacter(showRemoveConfirm)}
                 disabled={saving}
                 className="flex-1 rounded-xl border border-danger/30 bg-danger/20 py-3 text-sm font-medium text-danger transition hover:bg-danger/30 disabled:opacity-50"
               >
-                {saving ? "Removing..." : "Remove"}
+                {saving
+                  ? t("groupChats.sessionSettings.removing")
+                  : t("groupChats.sessionSettings.remove")}
               </button>
             </div>
           </div>
@@ -1106,7 +1136,7 @@ export function GroupChatSettingsPage() {
       <BottomMenu
         isOpen={showCloneOptions}
         onClose={() => setShowCloneOptions(false)}
-        title="Clone Group"
+        title={t("groupChats.sessionSettings.cloneGroupTitle")}
       >
         <MenuSection>
           <div className={spacing.field}>
@@ -1135,10 +1165,10 @@ export function GroupChatSettingsPage() {
                 </div>
                 <div className="min-w-0">
                   <p className={cn(typography.body.size, typography.body.weight, "text-fg")}>
-                    With messages
+                    {t("groupChats.sessionSettings.withMessages")}
                   </p>
                   <p className={cn(typography.caption.size, "text-fg/50 mt-0.5")}>
-                    Clone everything including chat history
+                    {t("groupChats.sessionSettings.withMessagesDesc")}
                   </p>
                 </div>
               </div>
@@ -1169,10 +1199,10 @@ export function GroupChatSettingsPage() {
                 </div>
                 <div className="min-w-0">
                   <p className={cn(typography.body.size, typography.body.weight, "text-fg")}>
-                    Without messages
+                    {t("groupChats.sessionSettings.withoutMessages")}
                   </p>
                   <p className={cn(typography.caption.size, "text-fg/50 mt-0.5")}>
-                    Clone setup only (characters, starting scene)
+                    {t("groupChats.sessionSettings.withoutMessagesDesc")}
                   </p>
                 </div>
               </div>
@@ -1185,12 +1215,11 @@ export function GroupChatSettingsPage() {
       <BottomMenu
         isOpen={showBranchOptions}
         onClose={() => setShowBranchOptions(false)}
-        title="Branch with Character"
+        title={t("groupChats.sessionSettings.branchWithCharacterTitle")}
       >
         <MenuSection>
           <p className={cn(typography.bodySmall.size, "text-fg/60 mb-3 px-1")}>
-            Select a character to continue as a 1-on-1 conversation. All messages from this group
-            will be converted.
+            {t("groupChats.sessionSettings.branchWithCharacterDesc")}
           </p>
           <div className={spacing.field}>
             {groupCharacters.map((character) => (
@@ -1221,7 +1250,7 @@ export function GroupChatSettingsPage() {
                       {character.name}
                     </p>
                     <p className={cn(typography.caption.size, "text-fg/50 mt-0.5 truncate")}>
-                      Continue conversation with {character.name}
+                      {t("groupChats.sessionSettings.continueWith", { name: character.name })}
                     </p>
                   </div>
                 </div>
@@ -1235,7 +1264,7 @@ export function GroupChatSettingsPage() {
       <BottomMenu
         isOpen={showChatpkgExportMenu}
         onClose={() => setShowChatpkgExportMenu(false)}
-        title="Export Chat Package"
+        title={t("groupChats.sessionSettings.exportChatPackageTitle")}
       >
         <MenuSection>
           <div className={spacing.field}>
@@ -1264,10 +1293,10 @@ export function GroupChatSettingsPage() {
                 </div>
                 <div className="min-w-0">
                   <p className={cn(typography.body.size, typography.body.weight, "text-fg")}>
-                    Include character snapshots
+                    {t("groupChats.sessionSettings.includeCharacterSnapshots")}
                   </p>
                   <p className={cn(typography.caption.size, "text-fg/50 mt-0.5")}>
-                    Keep character data inside the package
+                    {t("groupChats.sessionSettings.includeCharacterSnapshotsDesc")}
                   </p>
                 </div>
               </div>
@@ -1298,10 +1327,10 @@ export function GroupChatSettingsPage() {
                 </div>
                 <div className="min-w-0">
                   <p className={cn(typography.body.size, typography.body.weight, "text-fg")}>
-                    Session only
+                    {t("groupChats.sessionSettings.sessionOnly")}
                   </p>
                   <p className={cn(typography.caption.size, "text-fg/50 mt-0.5")}>
-                    Export messages and metadata only
+                    {t("groupChats.sessionSettings.sessionOnlyDesc")}
                   </p>
                 </div>
               </div>
@@ -1318,7 +1347,7 @@ export function GroupChatSettingsPage() {
           setPendingChatpkgImport(null);
           setChatpkgParticipantMap({});
         }}
-        title="Map Participants"
+        title={t("groupChats.sessionSettings.mapParticipantsTitle")}
       >
         <MenuSection>
           <div className="space-y-3 max-h-[60vh] overflow-y-auto">
@@ -1343,7 +1372,7 @@ export function GroupChatSettingsPage() {
                     {displayName}
                   </p>
                   <p className={cn(typography.caption.size, "mt-0.5 text-fg/50")}>
-                    Select the local character for this participant.
+                    {t("groupChats.sessionSettings.selectLocalCharacter")}
                   </p>
                   <select
                     value={currentValue}
@@ -1360,7 +1389,9 @@ export function GroupChatSettingsPage() {
                     }}
                     className="mt-2 w-full rounded-lg border border-fg/10 bg-black/20 px-3 py-2 text-sm text-fg focus:border-fg/30 focus:outline-none"
                   >
-                    <option value="">Select character...</option>
+                    <option value="">
+                      {t("groupChats.sessionSettings.selectCharacterPlaceholder")}
+                    </option>
                     {availableCharacters.map((character) => (
                       <option key={character.id} value={character.id}>
                         {character.name}
@@ -1378,7 +1409,7 @@ export function GroupChatSettingsPage() {
             }}
             className="mt-4 w-full rounded-xl border border-emerald-500/30 bg-emerald-500/20 py-3 text-sm font-medium text-emerald-200 hover:bg-emerald-500/30"
           >
-            Continue
+            {t("groupChats.sessionSettings.continue")}
           </button>
         </MenuSection>
       </BottomMenu>
@@ -1391,12 +1422,12 @@ export function GroupChatSettingsPage() {
           setPendingChatpkgImport(null);
           setChatpkgParticipantMap({});
         }}
-        title="Import Chat Package"
+        title={t("groupChats.sessionSettings.importChatPackageTitle")}
       >
         <MenuSection>
           <div className="space-y-4">
             <div className="rounded-xl border border-fg/10 bg-fg/5 p-3 text-sm text-fg/80">
-              This will import the selected `.chatpkg` as a new group session.
+              {t("groupChats.sessionSettings.importChatPackageDesc")}
             </div>
             <button
               onClick={() => {
@@ -1405,7 +1436,9 @@ export function GroupChatSettingsPage() {
               disabled={importingChatpkg}
               className="w-full rounded-xl border border-emerald-500/30 bg-emerald-500/20 py-3 text-sm font-medium text-emerald-200 transition hover:bg-emerald-500/30 disabled:opacity-50"
             >
-              {importingChatpkg ? "Importing..." : "Import"}
+              {importingChatpkg
+                ? t("groupChats.sessionSettings.importing")
+                : t("common.buttons.import")}
             </button>
           </div>
         </MenuSection>
