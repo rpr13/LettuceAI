@@ -442,21 +442,19 @@ export function GroupChatFooter({
             "mb-0.5 flex h-10 w-11 shrink-0 items-center justify-center self-end",
             radius.full,
             sending && onAbort
-              ? "border border-danger/30 bg-danger/15 text-danger/80"
+              ? "border border-red-400/40 bg-red-400/20 text-red-100"
               : hasDraft || hasAttachments
                 ? "border border-accent/40 bg-accent/20 text-accent"
-                : onContinue
-                  ? "border border-fg/15 bg-fg/10 text-fg/70"
-                  : "border border-fg/15 bg-fg/10 text-fg/40",
+                : "border border-white/15 bg-white/10 text-white/70",
             interactive.transition.fast,
             interactive.active.scale,
-            sending && onAbort && "hover:border-danger/40 hover:bg-danger/20 hover:text-danger/90",
+            sending && onAbort && "hover:border-red-400/60 hover:bg-red-400/30",
             !sending && (hasDraft || hasAttachments) && "hover:border-accent/60 hover:bg-accent/30",
             !sending &&
               !hasDraft &&
               !hasAttachments &&
               onContinue &&
-              "hover:border-fg/25 hover:bg-fg/15",
+              "hover:border-emerald-400/60 hover:bg-emerald-400/30",
             "disabled:cursor-not-allowed disabled:opacity-40",
           )}
           title={
