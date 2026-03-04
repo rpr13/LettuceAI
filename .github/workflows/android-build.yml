@@ -21,6 +21,12 @@ jobs:
       tag: ${{ steps.meta.outputs.tag }}
       name: ${{ steps.meta.outputs.name }}
     steps:
+      - name: Checkout (full history for changelog)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
       - name: Compute release metadata
         id: meta
         run: |
@@ -30,6 +36,49 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
 
+      - name: Build release body (include commits since last Android build)
+        id: release_body
+        shell: bash
+        run: |
+          REPO_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+          PREV_TAG=""
+          while IFS= read -r tag; do
+            TAG_SHA="$(git rev-list -n 1 "$tag" 2>/dev/null || true)"
+            if [[ -n "$TAG_SHA" && "$TAG_SHA" != "$GITHUB_SHA" ]]; then
+              PREV_TAG="$tag"
+              break
+            fi
+          done < <(git tag --list 'android-dev-*' --sort=-creatordate)
+
+          {
+            echo "body<<'EOF'"
+            echo "Automated Android build artifacts for commit \`${GITHUB_SHA}\`."
+            echo "Workflow run: ${REPO_URL}/actions/runs/${GITHUB_RUN_ID}"
+            echo
+
+            if [[ -n "$PREV_TAG" ]]; then
+              echo "### Changes since \`${PREV_TAG}\`"
+              echo "Compare: ${REPO_URL}/compare/${PREV_TAG}...${GITHUB_SHA}"
+              echo
+
+              COMMIT_LINES=0
+              while IFS=$'\t' read -r sha subject; do
+                [[ -z "$sha" ]] && continue
+                short_sha="${sha:0:7}"
+                echo "- [\`${short_sha}\`](${REPO_URL}/commit/${sha}) ${subject}"
+                COMMIT_LINES=$((COMMIT_LINES + 1))
+              done < <(git log --pretty=format:'%H%x09%s' "${PREV_TAG}..${GITHUB_SHA}")
+
+              if [[ "$COMMIT_LINES" -eq 0 ]]; then
+                echo "- No commits between the previous Android build and this build."
+              fi
+            else
+              echo "### Changes"
+              echo "- No previous Android build tag found."
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Create prerelease
         uses: softprops/action-gh-release@v2
         with:
@@ -38,9 +87,7 @@ jobs:
           name: ${{ steps.meta.outputs.name }}
           prerelease: true
           generate_release_notes: false
-          body: |
-            Automated Android build artifacts for commit `${{ github.sha }}`.
-            Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          body: ${{ steps.release_body.outputs.body }}
 
   android:
     needs: prepare_release
