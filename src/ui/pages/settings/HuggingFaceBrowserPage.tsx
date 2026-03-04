@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -17,9 +17,7 @@ import {
   AlertTriangle,
   FileText,
   ExternalLink,
-  Settings2,
   Monitor,
-  ChevronDown,
   Info,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -167,9 +165,13 @@ function calcScore(
   if (availableVram > 0) {
     if (totalNeeded <= vramBudget) {
       // Everything fits in VRAM
-      gpuScore = 100; fitsVram = true; gpuMode = "full";
+      gpuScore = 100;
+      fitsVram = true;
+      gpuMode = "full";
     } else if (modelSize === 0) {
-      gpuScore = 10; fitsVram = false; gpuMode = "cpu";
+      gpuScore = 10;
+      fitsVram = false;
+      gpuMode = "cpu";
     } else if (modelSize <= vramBudget) {
       // Model weights fit, KV/compute spills to RAM
       const remaining = vramBudget - modelSize;
@@ -183,13 +185,19 @@ function calcScore(
       const offloadRatio = Math.min(vramBudget / modelSize, 1.0);
       gpuScore = 10 + offloadRatio * 60; // 10-70
       fitsVram = false;
-      gpuMode = offloadRatio >= 0.75 ? "mostLayers"
-        : offloadRatio >= 0.5 ? "halfLayers"
-        : offloadRatio >= 0.2 ? "fewLayers"
-        : "cpu";
+      gpuMode =
+        offloadRatio >= 0.75
+          ? "mostLayers"
+          : offloadRatio >= 0.5
+            ? "halfLayers"
+            : offloadRatio >= 0.2
+              ? "fewLayers"
+              : "cpu";
     }
   } else {
-    gpuScore = 0; fitsVram = false; gpuMode = "cpu";
+    gpuScore = 0;
+    fitsVram = false;
+    gpuMode = "cpu";
   }
 
   // KV headroom (15%)
@@ -207,7 +215,16 @@ function calcScore(
   let raw = memoryScore * 0.25 + gpuScore * 0.35 + kvScore * 0.15 + quantQuality * 0.25;
   if (memoryScore === 0) raw = Math.min(raw, 10);
   const score = Math.min(Math.round(raw), 100);
-  const label = score >= 80 ? "excellent" : score >= 60 ? "good" : score >= 40 ? "marginal" : score >= 20 ? "poor" : "unrunnable";
+  const label =
+    score >= 80
+      ? "excellent"
+      : score >= 60
+        ? "good"
+        : score >= 40
+          ? "marginal"
+          : score >= 20
+            ? "poor"
+            : "unrunnable";
   return { score, label, fitsVram, gpuMode };
 }
 
@@ -224,6 +241,12 @@ interface HfModelInfo {
 }
 
 type SortMode = "trending" | "downloads" | "likes" | "lastModified";
+type FilesPanelTab = "recommended" | "files";
+type CompareSelection = {
+  id: number;
+  filename: string;
+  kvType: string;
+};
 
 type ViewState = { kind: "search" } | { kind: "model"; modelId: string };
 
@@ -332,6 +355,408 @@ function parseHfUrl(input: string): string | null {
   return null;
 }
 
+function DetailReportContent({
+  recData,
+  selectedFile,
+  kvType,
+  contextLength,
+  t,
+}: {
+  recData: RecommendationData;
+  selectedFile: FileRecommendation;
+  kvType: string;
+  contextLength: number;
+  t: (key: any, vars?: any) => string;
+}) {
+  const bpv = KV_BPV[kvType] || 2;
+  const totalAvail = recData.totalAvailable;
+  const maxCtx = Math.max(
+    maxContextForBpv(
+      selectedFile.size,
+      recData.kvBasePerToken,
+      bpv,
+      totalAvail,
+      recData.modelMaxContext,
+    ),
+    1024,
+  );
+  const clampedCtx = Math.min(Math.max(contextLength, 1024), maxCtx);
+  const effectiveKvCtx = recData.kvContextCap
+    ? Math.min(clampedCtx, recData.kvContextCap)
+    : clampedCtx;
+  const kvBytes = recData.kvBasePerToken ? recData.kvBasePerToken * bpv * effectiveKvCtx : 0;
+  const overhead = computeOverhead(selectedFile.size);
+  const totalNeeded = selectedFile.size + kvBytes + overhead;
+  const headroom = Math.max(totalAvail - totalNeeded, 0);
+  const vramBudget = recData.availableVram * 0.9;
+  const { score, gpuMode } = calcScore(
+    selectedFile.size,
+    selectedFile.quantQuality,
+    kvBytes,
+    totalAvail,
+    recData.availableVram,
+  );
+
+  const modelMax = recData.modelMaxContext;
+  const detailFullGpuCtx = (() => {
+    if (recData.availableVram <= 0 || !recData.kvBasePerToken) return 0;
+    if (selectedFile.size + overhead >= vramBudget) return 0;
+    const vramForKv = vramBudget - selectedFile.size - overhead;
+    const rawCtx = Math.floor(vramForKv / (recData.kvBasePerToken * bpv));
+    if (recData.kvContextCap && rawCtx >= recData.kvContextCap) return modelMax;
+    return rawCtx >= 512 ? Math.min(rawCtx, modelMax) : 0;
+  })();
+  const detailMaxRamCtx = (() => {
+    if (!recData.kvBasePerToken) return 0;
+    const remaining = Math.max(totalAvail - selectedFile.size - overhead, 0);
+    const rawCtx = Math.floor(remaining / (recData.kvBasePerToken * bpv));
+    if (recData.kvContextCap && rawCtx >= recData.kvContextCap) return modelMax;
+    return rawCtx >= 512 ? Math.min(rawCtx, modelMax) : 0;
+  })();
+
+  const memoryScore = (() => {
+    if (totalAvail === 0) return 50;
+    if (totalNeeded > totalAvail) return 0;
+    const r = totalAvail / totalNeeded;
+    return r < 1.2 ? 20 : r < 1.5 ? 50 : r < 2.0 ? 70 : r < 3.0 ? 85 : 100;
+  })();
+  const gpuScore = (() => {
+    if (recData.availableVram <= 0) return 0;
+    if (totalNeeded <= vramBudget) return 100;
+    if (selectedFile.size === 0) return 10;
+    if (selectedFile.size <= vramBudget) {
+      const remaining = vramBudget - selectedFile.size;
+      const spill = kvBytes + overhead;
+      const fitRatio = spill > 0 ? Math.min(remaining / spill, 1.0) : 1.0;
+      return Math.round(70 + fitRatio * 25);
+    }
+    const offloadRatio = Math.min(vramBudget / selectedFile.size, 1.0);
+    return Math.round(10 + offloadRatio * 60);
+  })();
+  const kvScore = (() => {
+    if (kvBytes === 0) return 50;
+    const h = Math.max(totalAvail - selectedFile.size - overhead, 0);
+    if (h === 0) return 0;
+    if (h >= kvBytes) {
+      const r = h / kvBytes;
+      return r >= 2 ? 100 : Math.round(50 + 50 * (r - 1));
+    }
+    return Math.round(50 * (h / kvBytes));
+  })();
+
+  const offloadPct = (() => {
+    if (recData.availableVram <= 0 || totalNeeded === 0) return 0;
+    if (totalNeeded <= vramBudget) return 100;
+    return Math.min(Math.round((vramBudget / totalNeeded) * 100), 99);
+  })();
+
+  const detailTotalLayers = recData.arch?.blockCount;
+  const detailRecLayers = (() => {
+    if (!detailTotalLayers || detailTotalLayers <= 0) return null;
+    if (totalNeeded <= vramBudget) return detailTotalLayers;
+    if (recData.availableVram <= 0) return null;
+    const layers = Math.floor((vramBudget / totalNeeded) * detailTotalLayers);
+    return Math.max(Math.min(layers, detailTotalLayers), 0);
+  })();
+
+  const fullGpuCtx = (() => {
+    if (recData.availableVram <= 0 || !recData.kvBasePerToken) return null;
+    if (totalNeeded <= vramBudget) return null;
+    if (selectedFile.size + overhead >= vramBudget) return null;
+    const vramForKv = vramBudget - selectedFile.size - overhead;
+    const bpvVal = KV_BPV[kvType] || 2;
+    const maxCtxForGpu = Math.floor(vramForKv / (recData.kvBasePerToken * bpvVal));
+    if (maxCtxForGpu < 512) return null;
+    return maxCtxForGpu;
+  })();
+
+  const row = (label: string, value: string, highlight?: string) => (
+    <div className="flex items-center justify-between py-1.5">
+      <span className="text-[11px] text-white/50">{label}</span>
+      <span className={cn("text-[11px] font-mono font-medium", highlight || "text-white/80")}>
+        {value}
+      </span>
+    </div>
+  );
+
+  const bar = (label: string, value: number, weight: number, color: string) => (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] text-white/50">
+          {label} <span className="text-white/25">({Math.round(weight * 100)}%)</span>
+        </span>
+        <span className={cn("text-[11px] font-mono font-semibold", color)}>
+          {Math.round(value)}
+        </span>
+      </div>
+      <div className="h-1 w-full rounded-full bg-white/10 overflow-hidden">
+        <div
+          className={cn("h-full rounded-full transition-all", color.replace("text-", "bg-"))}
+          style={{ width: `${Math.min(value, 100)}%` }}
+        />
+      </div>
+    </div>
+  );
+
+  const scoreColor =
+    score >= 80
+      ? "text-emerald-400"
+      : score >= 60
+        ? "text-blue-400"
+        : score >= 40
+          ? "text-amber-400"
+          : score >= 20
+            ? "text-orange-400"
+            : "text-red-400";
+
+  return (
+    <div className="space-y-1">
+      <MenuLabel>{t("hfBrowser.detailSystem")}</MenuLabel>
+      <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-1 divide-y divide-white/5">
+        {row(t("hfBrowser.detailRam"), formatBytes(recData.availableRam))}
+        {row(
+          t("hfBrowser.detailVram"),
+          recData.availableVram > 0 ? formatBytes(recData.availableVram) : "—",
+        )}
+        {recData.availableVram > 0 &&
+          row(t("hfBrowser.detailVramBudget"), formatBytes(vramBudget), "text-white/60")}
+        {recData.unifiedMemory &&
+          row(t("hfBrowser.detailMemMode"), t("hfBrowser.detailUnified"), "text-amber-400")}
+        {row(t("hfBrowser.detailTotalAvailable"), formatBytes(totalAvail))}
+      </div>
+
+      {recData.arch && (
+        <>
+          <MenuLabel>{t("hfBrowser.detailArchitecture")}</MenuLabel>
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-1 divide-y divide-white/5">
+            {recData.arch.architecture &&
+              row(t("hfBrowser.detailArch"), recData.arch.architecture.toUpperCase())}
+            {recData.arch.blockCount != null &&
+              row(t("hfBrowser.detailLayers"), recData.arch.blockCount.toString())}
+            {recData.arch.embeddingLength != null &&
+              row(t("hfBrowser.detailEmbedding"), recData.arch.embeddingLength.toLocaleString())}
+            {recData.arch.headCount != null &&
+              row(t("hfBrowser.detailHeads"), recData.arch.headCount.toString())}
+            {recData.arch.headCountKv != null &&
+              row(t("hfBrowser.detailKvHeads"), recData.arch.headCountKv.toString())}
+            {recData.arch.feedForwardLength != null &&
+              row(t("hfBrowser.detailFfn"), recData.arch.feedForwardLength.toLocaleString())}
+            {recData.arch.contextLength != null &&
+              row(t("hfBrowser.detailTrainCtx"), recData.arch.contextLength.toLocaleString())}
+            {recData.arch.slidingWindow != null &&
+              row(t("hfBrowser.detailSwa"), recData.arch.slidingWindow.toLocaleString())}
+            {recData.arch.kvLoraRank != null &&
+              row(t("hfBrowser.detailMlaRank"), recData.arch.kvLoraRank.toString())}
+            {recData.arch.incompleteParse &&
+              row(
+                t("hfBrowser.detailParseStatus"),
+                t("hfBrowser.detailIncomplete"),
+                "text-amber-400",
+              )}
+          </div>
+        </>
+      )}
+
+      <MenuDivider />
+
+      <MenuLabel>{t("hfBrowser.detailConfig")}</MenuLabel>
+      <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-1 divide-y divide-white/5">
+        {row(t("hfBrowser.quantization"), selectedFile.quantization)}
+        {row(t("hfBrowser.detailModelSize"), formatBytes(selectedFile.size))}
+        {row(t("hfBrowser.contextLength"), clampedCtx.toLocaleString() + " tokens")}
+        {row(t("hfBrowser.kvCacheType"), kvType.toUpperCase())}
+        {recData.kvContextCap &&
+          row(
+            t("hfBrowser.detailEffectiveKvCtx"),
+            effectiveKvCtx.toLocaleString() + " tokens",
+            "text-white/60",
+          )}
+        {detailFullGpuCtx > 0 &&
+          row(
+            t("hfBrowser.detailOptimalGpuCtx"),
+            detailFullGpuCtx.toLocaleString() + " tokens",
+            "text-emerald-400",
+          )}
+        {detailMaxRamCtx > 0 &&
+          row(
+            t("hfBrowser.detailOptimalRamCtx"),
+            detailMaxRamCtx.toLocaleString() + " tokens",
+            "text-amber-400",
+          )}
+      </div>
+
+      <MenuLabel>{t("hfBrowser.detailMemory")}</MenuLabel>
+      <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-1 divide-y divide-white/5">
+        {row(t("hfBrowser.detailWeights"), formatBytes(selectedFile.size))}
+        {row(t("hfBrowser.detailKvCache"), kvBytes > 0 ? formatBytes(kvBytes) : "—")}
+        {row(t("hfBrowser.detailComputeBuffer"), formatBytes(overhead))}
+        {row(
+          t("hfBrowser.detailTotalNeeded"),
+          formatBytes(totalNeeded),
+          totalNeeded > totalAvail ? "text-red-400" : "text-emerald-400",
+        )}
+        {row(
+          t("hfBrowser.detailHeadroom"),
+          headroom > 0 ? formatBytes(headroom) : "0 B",
+          headroom > 0 ? "text-emerald-400/70" : "text-red-400/70",
+        )}
+        {recData.availableVram > 0 &&
+          row(
+            t("hfBrowser.detailGpuFit"),
+            {
+              full: t("hfBrowser.gpuFull"),
+              nearFull: t("hfBrowser.gpuNearFull"),
+              kvSpill: t("hfBrowser.gpuKvSpill"),
+              kvHeavySpill: t("hfBrowser.gpuKvHeavySpill"),
+              mostLayers: t("hfBrowser.gpuMostLayers"),
+              halfLayers: t("hfBrowser.gpuHalfLayers"),
+              fewLayers: t("hfBrowser.gpuFewLayers"),
+              cpu: t("hfBrowser.gpuCpu"),
+            }[gpuMode] || t("hfBrowser.gpuCpu"),
+            ["full", "nearFull"].includes(gpuMode)
+              ? "text-emerald-400"
+              : ["kvSpill", "mostLayers"].includes(gpuMode)
+                ? "text-blue-400"
+                : ["kvHeavySpill", "halfLayers"].includes(gpuMode)
+                  ? "text-amber-400"
+                  : "text-red-400",
+          )}
+        {recData.availableVram > 0 &&
+          row(
+            t("hfBrowser.detailOffload"),
+            `${offloadPct}%`,
+            offloadPct >= 100
+              ? "text-emerald-400"
+              : offloadPct >= 50
+                ? "text-blue-400"
+                : offloadPct > 0
+                  ? "text-amber-400"
+                  : "text-red-400",
+          )}
+        {detailRecLayers != null &&
+          detailTotalLayers != null &&
+          detailRecLayers < detailTotalLayers &&
+          detailRecLayers > 0 &&
+          row(
+            t("hfBrowser.detailLayers-ngl"),
+            `${detailRecLayers} / ${detailTotalLayers}`,
+            detailRecLayers >= detailTotalLayers * 0.8
+              ? "text-blue-400"
+              : detailRecLayers >= detailTotalLayers * 0.5
+                ? "text-amber-400"
+                : "text-red-400",
+          )}
+      </div>
+
+      {kvBytes > 0 &&
+        recData.availableVram > 0 &&
+        (() => {
+          let kvVramPct: number;
+          if (totalNeeded <= vramBudget) {
+            kvVramPct = 100;
+          } else if (selectedFile.size >= vramBudget) {
+            const layerRatio = Math.min(vramBudget / selectedFile.size, 1.0);
+            kvVramPct = Math.round(layerRatio * 100);
+          } else {
+            const vramForKv = vramBudget - selectedFile.size - overhead;
+            kvVramPct = vramForKv > 0 ? Math.min(Math.round((vramForKv / kvBytes) * 100), 100) : 0;
+          }
+          const kvRamPct = 100 - kvVramPct;
+          const kvOnVram = kvBytes * (kvVramPct / 100);
+          const kvOnRam = kvBytes - kvOnVram;
+
+          return (
+            <>
+              <MenuLabel>{t("hfBrowser.detailKvDistribution")}</MenuLabel>
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-1 divide-y divide-white/5">
+                {row(
+                  t("hfBrowser.detailKvOnGpu"),
+                  `${formatBytes(kvOnVram)} (${kvVramPct}%)`,
+                  kvVramPct >= 80
+                    ? "text-emerald-400"
+                    : kvVramPct >= 40
+                      ? "text-blue-400"
+                      : "text-amber-400",
+                )}
+                {row(
+                  t("hfBrowser.detailKvOnRam"),
+                  `${formatBytes(kvOnRam)} (${kvRamPct}%)`,
+                  kvRamPct === 0
+                    ? "text-emerald-400/60"
+                    : kvRamPct <= 20
+                      ? "text-blue-400"
+                      : "text-amber-400",
+                )}
+              </div>
+              {kvRamPct > 0 && (
+                <div className="flex items-start gap-2 rounded-xl border border-amber-400/15 bg-amber-400/5 px-3 py-2 mt-1">
+                  <Info size={12} className="text-amber-400 shrink-0 mb-0.5" />
+                  <p className="text-[12px] leading-snug text-amber-300/70">
+                    {t("hfBrowser.kvDistributionTip", { pct: kvRamPct.toString() })}
+                  </p>
+                </div>
+              )}
+            </>
+          );
+        })()}
+
+      {fullGpuCtx && fullGpuCtx < clampedCtx && (
+        <div className="flex items-start gap-2 rounded-xl border border-blue-400/20 bg-blue-400/5 px-3 py-2 mt-1">
+          <Info size={12} className="text-blue-400 shrink-0 mt-0.5" />
+          <p className="text-[12px] leading-snug text-blue-300/80">
+            {t("hfBrowser.detailCtxTip", { ctx: fullGpuCtx.toLocaleString() })}
+          </p>
+        </div>
+      )}
+
+      <MenuDivider />
+
+      <MenuLabel>{t("hfBrowser.detailScoreBreakdown")}</MenuLabel>
+      <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 space-y-3">
+        {bar(
+          t("hfBrowser.detailMemFitness"),
+          memoryScore,
+          0.25,
+          memoryScore >= 70
+            ? "text-emerald-400"
+            : memoryScore >= 40
+              ? "text-amber-400"
+              : "text-red-400",
+        )}
+        {bar(
+          t("hfBrowser.detailGpuAccel"),
+          gpuScore,
+          0.35,
+          gpuScore >= 75 ? "text-emerald-400" : gpuScore >= 35 ? "text-amber-400" : "text-red-400",
+        )}
+        {bar(
+          t("hfBrowser.detailKvHeadroom"),
+          kvScore,
+          0.15,
+          kvScore >= 70 ? "text-emerald-400" : kvScore >= 40 ? "text-amber-400" : "text-red-400",
+        )}
+        {bar(
+          t("hfBrowser.detailQuantQuality"),
+          selectedFile.quantQuality,
+          0.25,
+          selectedFile.quantQuality >= 75
+            ? "text-emerald-400"
+            : selectedFile.quantQuality >= 50
+              ? "text-amber-400"
+              : "text-red-400",
+        )}
+      </div>
+
+      <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 mt-2">
+        <span className="text-[12px] font-semibold text-white/70">
+          {t("hfBrowser.detailFinalScore")}
+        </span>
+        <span className={cn("text-2xl font-bold", scoreColor)}>{score}</span>
+      </div>
+    </div>
+  );
+}
+
 export function HuggingFaceBrowserPage() {
   const { t } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -379,15 +804,30 @@ export function HuggingFaceBrowserPage() {
   // Recommendation panel state
   const [recData, setRecData] = useState<RecommendationData | null>(null);
   const [recLoading, setRecLoading] = useState(false);
-  const [recOpen, setRecOpen] = useState<string | null>(null); // filename of open panel
   const [recFile, setRecFile] = useState(""); // selected file in dropdown
   const [recContext, setRecContext] = useState(4096);
   const [recKvType, setRecKvType] = useState("f16");
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [compareSelections, setCompareSelections] = useState<CompareSelection[]>([]);
+  const [filesPanelTab, setFilesPanelTab] = useState<FilesPanelTab>("recommended");
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const filesPanelRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number>(0);
+  const compareNextIdRef = useRef(1);
+  const compareScrollRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const compareSyncRafRef = useRef<number | null>(null);
+  const compareSyncSourceIdRef = useRef<number | null>(null);
+  const compareSyncRatioRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      if (compareSyncRafRef.current != null) {
+        cancelAnimationFrame(compareSyncRafRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (view.kind !== "model" || !filesPanelRef.current) return;
@@ -498,7 +938,8 @@ export function HuggingFaceBrowserPage() {
       if (data.length > 0) {
         setResults((prev) => [...prev, ...data]);
       }
-    } catch { } finally {
+    } catch {
+    } finally {
       setLoadingMore(false);
     }
   }, [loadingMore, hasMore, debouncedQuery, sortMode, sortField, results.length]);
@@ -538,7 +979,10 @@ export function HuggingFaceBrowserPage() {
       setReadmeLoading(true);
       setRunabilityScores({});
       setRecData(null);
-      setRecOpen(null);
+      setRecLoading(true);
+      setFilesPanelTab("recommended");
+      setCompareOpen(false);
+      setCompareSelections([]);
 
       const filesPromise = invoke<HfModelInfo>("hf_get_model_files", { modelId })
         .then((info) => {
@@ -582,6 +1026,124 @@ export function HuggingFaceBrowserPage() {
       await Promise.allSettled([filesPromise, readmePromise]);
     },
     [setView],
+  );
+
+  useEffect(() => {
+    if (view.kind !== "model" || !modelInfo) return;
+    const files = modelInfo.files.filter((f) => f.size > 0);
+    if (files.length === 0) {
+      setRecLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setRecLoading(true);
+
+    invoke<RecommendationData>("hf_get_recommendation_data", {
+      modelId: modelInfo.modelId,
+      files: files.map((f) => ({
+        filename: f.filename,
+        size: f.size,
+        quantization: f.quantization,
+      })),
+    })
+      .then((data) => {
+        if (cancelled) return;
+        setRecData(data);
+        setRecFile(data.best?.filename || files[0]?.filename || "");
+        setRecContext(data.best?.contextLength || 4096);
+        setRecKvType(data.best?.kvType || "q8_0");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRecData(null);
+      })
+      .finally(() => {
+        if (!cancelled) setRecLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [view.kind, modelInfo]);
+
+  const filesWithSize = modelInfo?.files.filter((f) => f.size > 0) ?? [];
+  const sortedFilesWithSize = useMemo(() => {
+    if (Object.keys(runabilityScores).length === 0) return filesWithSize;
+
+    return [...filesWithSize].sort((a, b) => {
+      const aScore = runabilityScores[a.filename]?.score;
+      const bScore = runabilityScores[b.filename]?.score;
+
+      if (aScore != null && bScore != null) {
+        if (aScore !== bScore) return bScore - aScore;
+        return a.filename.localeCompare(b.filename);
+      }
+      if (aScore != null) return -1;
+      if (bScore != null) return 1;
+      return a.filename.localeCompare(b.filename);
+    });
+  }, [filesWithSize, runabilityScores]);
+
+  const openCompareModal = useCallback(() => {
+    if (!recData || recData.files.length === 0) return;
+    const primary =
+      recData.files.find((f) => f.filename === recFile)?.filename || recData.files[0].filename;
+    const secondary = recData.files.find((f) => f.filename !== primary)?.filename;
+
+    compareNextIdRef.current = 3;
+    const initial: CompareSelection[] = [{ id: 1, filename: primary, kvType: recKvType }];
+    if (secondary) {
+      initial.push({ id: 2, filename: secondary, kvType: recKvType });
+    }
+
+    setCompareSelections(initial);
+    setCompareOpen(true);
+  }, [recData, recFile, recKvType]);
+
+  const addCompareSelection = useCallback(() => {
+    if (!recData || compareSelections.length >= 3 || recData.files.length === 0) return;
+    const selected = new Set(compareSelections.map((s) => s.filename));
+    const next = recData.files.find((f) => !selected.has(f.filename)) || recData.files[0];
+    const id = compareNextIdRef.current++;
+    setCompareSelections((prev) => [...prev, { id, filename: next.filename, kvType: recKvType }]);
+  }, [compareSelections, recData, recKvType]);
+
+  const updateCompareSelection = useCallback((id: number, patch: Partial<CompareSelection>) => {
+    setCompareSelections((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+    );
+  }, []);
+
+  const removeCompareSelection = useCallback((id: number) => {
+    setCompareSelections((prev) => prev.filter((item) => item.id !== id));
+    delete compareScrollRefs.current[id];
+  }, []);
+
+  const handleCompareReportScroll = useCallback(
+    (sourceId: number, event: React.UIEvent<HTMLDivElement>) => {
+      // Ignore programmatic scroll events to prevent feedback loops.
+      if (!event.nativeEvent.isTrusted) return;
+
+      const sourceEl = event.currentTarget;
+      const sourceMax = Math.max(sourceEl.scrollHeight - sourceEl.clientHeight, 0);
+      compareSyncSourceIdRef.current = sourceId;
+      compareSyncRatioRef.current = sourceMax > 0 ? sourceEl.scrollTop / sourceMax : 0;
+
+      if (compareSyncRafRef.current != null) return;
+      compareSyncRafRef.current = requestAnimationFrame(() => {
+        const activeSourceId = compareSyncSourceIdRef.current;
+        const ratio = compareSyncRatioRef.current;
+        for (const [idStr, el] of Object.entries(compareScrollRefs.current)) {
+          const id = Number(idStr);
+          if (id === activeSourceId || !el) continue;
+          const targetMax = Math.max(el.scrollHeight - el.clientHeight, 0);
+          el.scrollTop = ratio * targetMax;
+        }
+        compareSyncRafRef.current = null;
+      });
+    },
+    [],
   );
 
   return (
@@ -942,463 +1504,596 @@ export function HuggingFaceBrowserPage() {
                     </div>
                   </div>
 
-                  {modelInfo.files.filter((f) => f.size > 0).length > 0 && (
+                  {filesWithSize.length > 0 && (
                     <div className="w-84 shrink-0 border-l border-fg/10 bg-surface/50 relative">
                       <div
                         ref={filesPanelRef}
                         className="flex flex-col overflow-hidden will-change-transform rounded-b-xl"
                       >
-                        {/* Files header */}
-                        <div className="flex items-center gap-2 border-b border-fg/10 px-4 py-3">
-                          <Download size={14} className="text-fg/40" />
-                          <h3 className="text-[10px] font-semibold uppercase tracking-[0.2em] text-fg/40">
-                            {t("hfBrowser.files")} ({modelInfo.files.filter((f) => f.size > 0).length})
-                          </h3>
+                        <div className="border-b border-fg/10 px-3 py-2">
+                          <div className="grid grid-cols-2 gap-1 rounded-lg border border-fg/10 bg-fg/5 p-1">
+                            <button
+                              type="button"
+                              onClick={() => setFilesPanelTab("recommended")}
+                              className={cn(
+                                "rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors",
+                                filesPanelTab === "recommended"
+                                  ? "bg-emerald-400/15 text-emerald-400"
+                                  : "text-fg/50 hover:text-fg/70",
+                              )}
+                            >
+                              {t("hfBrowser.recommendedSettings")}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setFilesPanelTab("files")}
+                              className={cn(
+                                "rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors",
+                                filesPanelTab === "files"
+                                  ? "bg-emerald-400/15 text-emerald-400"
+                                  : "text-fg/50 hover:text-fg/70",
+                              )}
+                            >
+                              {t("hfBrowser.files")} ({filesWithSize.length})
+                            </button>
+                          </div>
                         </div>
 
-                        {/* Settings advisor */}
-                        {(() => {
-                          return (
-                            <div className="border-b border-fg/10 px-3 py-2.5">
-                              <button
-                                onClick={async () => {
-                                  if (recOpen) {
-                                    setRecOpen(null);
-                                    return;
-                                  }
-                                  setRecOpen("__advisor__");
-                                  if (!recData) {
-                                    setRecLoading(true);
-                                    try {
-                                      const data = await invoke<RecommendationData>(
-                                        "hf_get_recommendation_data",
-                                        {
-                                          modelId: modelInfo.modelId,
-                                          files: modelInfo.files
-                                            .filter((f) => f.size > 0)
-                                            .map((f) => ({
-                                              filename: f.filename,
-                                              size: f.size,
-                                              quantization: f.quantization,
-                                            })),
-                                        },
+                        {/* Recommended settings tab */}
+                        {filesPanelTab === "recommended" && (
+                          <div className="flex-1 overflow-y-auto px-3 py-3 pb-6">
+                            <div className="rounded-xl border border-fg/10 bg-fg/[0.03] px-3 py-2.5">
+                              {recLoading || !recData ? (
+                                <div className="space-y-2.5 animate-pulse">
+                                  <div className="h-8 w-24 rounded bg-fg/10" />
+                                  <div className="h-12 rounded-lg bg-fg/10" />
+                                  <div className="h-3 w-28 rounded bg-fg/10" />
+                                  <div className="h-9 rounded-md bg-fg/10" />
+                                  <div className="h-3 w-28 rounded bg-fg/10" />
+                                  <div className="h-2 rounded bg-fg/10" />
+                                  <div className="h-9 rounded-md bg-fg/10" />
+                                  <div className="h-8 rounded-lg bg-fg/10" />
+                                </div>
+                              ) : (
+                                (() => {
+                                  const selFile =
+                                    recData.files.find((f) => f.filename === recFile) ||
+                                    recData.files[0];
+                                  if (!selFile) return null;
+
+                                  const totalAvail = recData.totalAvailable;
+                                  const bpvSel = KV_BPV[recKvType] || 2;
+                                  const maxCtx = Math.max(
+                                    maxContextForBpv(
+                                      selFile.size,
+                                      recData.kvBasePerToken,
+                                      bpvSel,
+                                      totalAvail,
+                                      recData.modelMaxContext,
+                                    ),
+                                    1024,
+                                  );
+                                  const clampedCtx = Math.min(Math.max(recContext, 1024), maxCtx);
+
+                                  const effectiveKvCtx = recData.kvContextCap
+                                    ? Math.min(clampedCtx, recData.kvContextCap)
+                                    : clampedCtx;
+                                  const kvBytes = recData.kvBasePerToken
+                                    ? recData.kvBasePerToken * bpvSel * effectiveKvCtx
+                                    : 0;
+                                  const { score, label, gpuMode } = calcScore(
+                                    selFile.size,
+                                    selFile.quantQuality,
+                                    kvBytes,
+                                    totalAvail,
+                                    recData.availableVram,
+                                  );
+
+                                  const scoreColor =
+                                    label === "excellent"
+                                      ? "text-emerald-500"
+                                      : label === "good"
+                                        ? "text-blue-500"
+                                        : label === "marginal"
+                                          ? "text-amber-500"
+                                          : label === "poor"
+                                            ? "text-orange-500"
+                                            : "text-red-500";
+
+                                  const scoreBg =
+                                    label === "excellent"
+                                      ? "bg-emerald-400/15"
+                                      : label === "good"
+                                        ? "bg-blue-400/15"
+                                        : label === "marginal"
+                                          ? "bg-amber-400/15"
+                                          : label === "poor"
+                                            ? "bg-orange-400/15"
+                                            : "bg-red-400/15";
+
+                                  const gpuLabel =
+                                    {
+                                      full: t("hfBrowser.gpuFull"),
+                                      nearFull: t("hfBrowser.gpuNearFull"),
+                                      kvSpill: t("hfBrowser.gpuKvSpill"),
+                                      kvHeavySpill: t("hfBrowser.gpuKvHeavySpill"),
+                                      mostLayers: t("hfBrowser.gpuMostLayers"),
+                                      halfLayers: t("hfBrowser.gpuHalfLayers"),
+                                      fewLayers: t("hfBrowser.gpuFewLayers"),
+                                      cpu: t("hfBrowser.gpuCpu"),
+                                    }[gpuMode] || t("hfBrowser.gpuCpu");
+
+                                  const upgradeSuggestion = (() => {
+                                    if (selFile.quantQuality >= 90) return null; // already top tier
+                                    const bpvVal = KV_BPV[recKvType] || 2;
+                                    let best: { file: FileRecommendation; score: number } | null =
+                                      null;
+                                    for (const f of recData.files) {
+                                      if (f.quantQuality <= selFile.quantQuality) continue;
+                                      if (f.filename === selFile.filename) continue;
+                                      const fMaxCtx = Math.max(
+                                        maxContextForBpv(
+                                          f.size,
+                                          recData.kvBasePerToken,
+                                          bpvVal,
+                                          totalAvail,
+                                          recData.modelMaxContext,
+                                        ),
+                                        1024,
                                       );
-                                      setRecData(data);
-                                      setRecFile(data.best?.filename || modelInfo.files[0]?.filename || "");
-                                      setRecContext(data.best?.contextLength || 4096);
-                                      setRecKvType(data.best?.kvType || "q8_0");
-                                    } catch { /* silently fail */ } finally {
-                                      setRecLoading(false);
-                                    }
-                                  }
-                                }}
-                                className={cn(
-                                  "flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-medium transition",
-                                  recOpen
-                                    ? "border-amber-400/30 bg-amber-400/10 text-amber-500"
-                                    : "border-fg/10 bg-fg/5 text-fg/50 hover:border-fg/20 hover:text-fg/70",
-                                )}
-                              >
-                                {recLoading ? (
-                                  <Loader size={12} className="animate-spin shrink-0" />
-                                ) : (
-                                  <Settings2 size={12} className="shrink-0" />
-                                )}
-                                <span className="flex-1 text-left">{t("hfBrowser.recommendedSettings")}</span>
-                                <ChevronDown
-                                  size={11}
-                                  className={cn("transition-transform shrink-0", recOpen && "rotate-180")}
-                                />
-                              </button>
-
-                              {recOpen && recData && (() => {
-                                const selFile = recData.files.find((f) => f.filename === recFile)
-                                  || recData.files[0];
-                                if (!selFile) return null;
-
-                                const totalAvail = recData.totalAvailable;
-                                const bpvSel = KV_BPV[recKvType] || 2;
-                                const maxCtx = Math.max(maxContextForBpv(selFile.size, recData.kvBasePerToken, bpvSel, totalAvail, recData.modelMaxContext), 1024);
-                                const clampedCtx = Math.min(Math.max(recContext, 1024), maxCtx);
-
-                                const effectiveKvCtx = recData.kvContextCap
-                                  ? Math.min(clampedCtx, recData.kvContextCap)
-                                  : clampedCtx;
-                                const kvBytes = recData.kvBasePerToken
-                                  ? recData.kvBasePerToken * bpvSel * effectiveKvCtx
-                                  : 0;
-                                const { score, label, gpuMode } = calcScore(
-                                  selFile.size,
-                                  selFile.quantQuality,
-                                  kvBytes,
-                                  totalAvail,
-                                  recData.availableVram,
-                                );
-
-                                const scoreColor =
-                                  label === "excellent" ? "text-emerald-500" :
-                                  label === "good" ? "text-blue-500" :
-                                  label === "marginal" ? "text-amber-500" :
-                                  label === "poor" ? "text-orange-500" :
-                                  "text-red-500";
-
-                                const scoreBg =
-                                  label === "excellent" ? "bg-emerald-400/15" :
-                                  label === "good" ? "bg-blue-400/15" :
-                                  label === "marginal" ? "bg-amber-400/15" :
-                                  label === "poor" ? "bg-orange-400/15" :
-                                  "bg-red-400/15";
-
-                                const gpuLabel = ({
-                                  full: t("hfBrowser.gpuFull"),
-                                  nearFull: t("hfBrowser.gpuNearFull"),
-                                  kvSpill: t("hfBrowser.gpuKvSpill"),
-                                  kvHeavySpill: t("hfBrowser.gpuKvHeavySpill"),
-                                  mostLayers: t("hfBrowser.gpuMostLayers"),
-                                  halfLayers: t("hfBrowser.gpuHalfLayers"),
-                                  fewLayers: t("hfBrowser.gpuFewLayers"),
-                                  cpu: t("hfBrowser.gpuCpu"),
-                                }[gpuMode]) || t("hfBrowser.gpuCpu");
-
-                                const upgradeSuggestion = (() => {
-                                  if (selFile.quantQuality >= 90) return null; // already top tier
-                                  const bpvVal = KV_BPV[recKvType] || 2;
-                                  let best: { file: FileRecommendation; score: number } | null = null;
-                                  for (const f of recData.files) {
-                                    if (f.quantQuality <= selFile.quantQuality) continue;
-                                    if (f.filename === selFile.filename) continue;
-                                    const fMaxCtx = Math.max(maxContextForBpv(f.size, recData.kvBasePerToken, bpvVal, totalAvail, recData.modelMaxContext), 1024);
-                                    if (fMaxCtx < 1024) continue;
-                                    const fCtx = Math.min(clampedCtx, fMaxCtx);
-                                    const fEffKvCtx = recData.kvContextCap ? Math.min(fCtx, recData.kvContextCap) : fCtx;
-                                    const fKv = recData.kvBasePerToken
-                                      ? recData.kvBasePerToken * bpvVal * fEffKvCtx : 0;
-                                    const { score: fScore } = calcScore(
-                                      f.size, f.quantQuality, fKv, totalAvail, recData.availableVram,
-                                    );
-                                    if (fScore < 70) continue;
-                                    if (!best || f.quantQuality > best.file.quantQuality ||
-                                        (f.quantQuality === best.file.quantQuality && fScore > best.score)) {
-                                      best = { file: f, score: fScore };
-                                    }
-                                  }
-                                  return best;
-                                })();
-
-                                return (
-                                  <div className="mt-2 space-y-2.5">
-                                    {/* Score hero */}
-                                    <div className={cn("flex items-center justify-between rounded-lg px-3 py-2", scoreBg)}>
-                                      <div className="flex items-center gap-2">
-                                        <span className={cn("text-xl font-bold", scoreColor)}>{score}</span>
-                                        <div className="leading-tight">
-                                          <span className={cn("text-[13px] font-semibold", scoreColor)}>{
-                                            ({
-                                              excellent: t("hfBrowser.runabilityExcellent"),
-                                              good: t("hfBrowser.runabilityGood"),
-                                              marginal: t("hfBrowser.runabilityMarginal"),
-                                              poor: t("hfBrowser.runabilityPoor"),
-                                              unrunnable: t("hfBrowser.runabilityUnrunnable"),
-                                            } as Record<string, string>)[label] || label
-                                          }</span>
-                                          <p className="text-[12px] text-fg/40 flex items-center gap-1">
-                                            <Monitor size={9} />
-                                            {gpuLabel}
-                                          </p>
-                                        </div>
-                                      </div>
-                                    </div>
-
-
-                                    {/* Upgrade suggestion */}
-                                    {upgradeSuggestion && (
-                                      <button
-                                        onClick={() => {
-                                          setRecFile(upgradeSuggestion.file.filename);
-                                          const mx = Math.max(maxContextForBpv(upgradeSuggestion.file.size, recData.kvBasePerToken, bpvSel, totalAvail, recData.modelMaxContext), 1024);
-                                          setRecContext(Math.min(recContext, mx));
-                                        }}
-                                        className="flex w-full items-start gap-2 rounded-lg border border-emerald-400/20 bg-emerald-400/5 px-2.5 py-2 text-left transition hover:bg-emerald-400/10 active:scale-[0.98]"
-                                      >
-                                        <TrendingUp size={11} className="text-emerald-400 shrink-0 mt-0.5" />
-                                        <div className="flex-1 min-w-0">
-                                          <p className="text-[12px] leading-snug text-emerald-400/90">
-                                            {t("hfBrowser.upgradeSuggestion", {
-                                              quant: upgradeSuggestion.file.quantization,
-                                              size: formatBytes(upgradeSuggestion.file.size),
-                                              score: upgradeSuggestion.score.toString(),
-                                            })}
-                                          </p>
-                                        </div>
-                                      </button>
-                                    )}
-
-                                    {/* Quantization */}
-                                    <div>
-                                      <label className="text-[9px] font-semibold uppercase tracking-wider text-fg/40">
-                                        {t("hfBrowser.quantization")}
-                                      </label>
-                                      <select
-                                        value={recFile}
-                                        onChange={(e) => {
-                                          setRecFile(e.target.value);
-                                          const f = recData.files.find((x) => x.filename === e.target.value);
-                                          if (f) {
-                                            const mx = Math.max(maxContextForBpv(f.size, recData.kvBasePerToken, bpvSel, totalAvail, recData.modelMaxContext), 1024);
-                                            const optimal = f.optimalGpuCtx > 0 ? f.optimalGpuCtx
-                                              : f.optimalRamCtx > 0 ? f.optimalRamCtx : 8192;
-                                            setRecContext(Math.min(optimal, mx));
-                                          }
-                                        }}
-                                        className="mt-1 w-full rounded-md border border-fg/10 bg-fg/5 px-2 py-1.5 text-[11px] text-fg focus:border-fg/25 focus:outline-none"
-                                      >
-                                        {recData.files.map((f) => (
-                                          <option key={f.filename} value={f.filename}>
-                                            {f.quantization} — {formatBytes(f.size)}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </div>
-
-                                    {/* Context length */}
-                                    {(() => {
-                                      const modelMax = recData.modelMaxContext;
-                                      // Max context for 100% GPU offload (model+KV+compute all in VRAM)
-                                      const fullGpuCtx = (() => {
-                                        if (recData.availableVram <= 0 || !recData.kvBasePerToken) return 0;
-                                        const vBudget = recData.availableVram * 0.9;
-                                        const oh = computeOverhead(selFile.size);
-                                        if (selFile.size + oh >= vBudget) return 0;
-                                        const vramForKv = vBudget - selFile.size - oh;
-                                        const bpvVal = KV_BPV[recKvType] || 2;
-                                        const rawCtx = Math.floor(vramForKv / (recData.kvBasePerToken * bpvVal));
-                                        if (recData.kvContextCap && rawCtx >= recData.kvContextCap) return modelMax;
-                                        return rawCtx >= 512 ? Math.min(rawCtx, modelMax) : 0;
-                                      })();
-                                      // Max context before RAM runs out (dynamic for current KV type)
-                                      const ramCtx = (() => {
-                                        if (!recData.kvBasePerToken) return 0;
-                                        const oh = computeOverhead(selFile.size);
-                                        const remaining = Math.max(totalAvail - selFile.size - oh, 0);
-                                        const bpvVal = KV_BPV[recKvType] || 2;
-                                        const rawCtx = Math.floor(remaining / (recData.kvBasePerToken * bpvVal));
-                                        if (recData.kvContextCap && rawCtx >= recData.kvContextCap) return modelMax;
-                                        return rawCtx >= 512 ? Math.min(rawCtx, modelMax) : 0;
-                                      })();
-
-                                      return (
-                                      <div>
-                                      <div className="flex items-center justify-between">
-                                        <label className="text-[9px] font-semibold uppercase tracking-wider text-fg/40">
-                                          {t("hfBrowser.contextLength")}
-                                        </label>
-                                        <span className="text-[12px] font-mono text-fg/60">{clampedCtx.toLocaleString()}</span>
-                                      </div>
-                                      <div className="relative mt-1">
-                                        <input
-                                          type="range"
-                                          min={1024}
-                                          max={maxCtx}
-                                          step={256}
-                                          value={clampedCtx}
-                                          onChange={(e) => setRecContext(Number(e.target.value))}
-                                          className="w-full accent-accent h-1.5"
-                                        />
-                                        {/* Optimal context tick marks below slider */}
-                                        {maxCtx > 1024 && (() => {
-                                          const pct = (v: number) => ((v - 1024) / (maxCtx - 1024)) * 100;
-                                          return (
-                                            <>
-                                              {fullGpuCtx > 1024 && fullGpuCtx < maxCtx && (
-                                                <div
-                                                  className="absolute bottom-0 w-0.5 bg-emerald-400 rounded-full pointer-events-none"
-                                                  style={{ left: `${pct(fullGpuCtx)}%`, height: 6, transform: "translateY(100%)" }}
-                                                />
-                                              )}
-                                              {ramCtx > 1024 && ramCtx < maxCtx && ramCtx !== fullGpuCtx && (
-                                                <div
-                                                  className="absolute bottom-0 w-0.5 bg-amber-400 rounded-full pointer-events-none"
-                                                  style={{ left: `${pct(ramCtx)}%`, height: 6, transform: "translateY(100%)" }}
-                                                />
-                                              )}
-                                            </>
-                                          );
-                                        })()}
-                                      </div>
-                                      <div className="flex justify-between text-[9px] text-fg/30">
-                                        <span>1,024</span>
-                                        <span>{maxCtx.toLocaleString()}</span>
-                                      </div>
-                                      {/* Clickable context presets */}
-                                      {(fullGpuCtx > 0 || ramCtx > 0) && (
-                                        <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5">
-                                          {fullGpuCtx > 0 && fullGpuCtx < maxCtx && (
-                                            <button
-                                              type="button"
-                                              onClick={() => setRecContext(Math.min(fullGpuCtx, maxCtx))}
-                                              className="flex items-center gap-1.5 text-[12px] font-medium text-emerald-400/80 hover:text-emerald-300 transition-colors"
-                                            >
-                                              <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.4)]" />
-                                              {t("hfBrowser.optimalGpuCtxShort", { ctx: fullGpuCtx.toLocaleString() })}
-                                            </button>
-                                          )}
-                                          {ramCtx > 0 && ramCtx !== fullGpuCtx && (
-                                            <button
-                                              type="button"
-                                              onClick={() => setRecContext(Math.min(ramCtx, maxCtx))}
-                                              className="flex items-center gap-1.5 text-[12px] font-medium text-amber-400/80 hover:text-amber-300 transition-colors"
-                                            >
-                                              <span className="inline-block w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.4)]" />
-                                              {t("hfBrowser.optimalRamCtxShort", { ctx: ramCtx.toLocaleString() })}
-                                            </button>
-                                          )}
-                                        </div>
-                                      )}
-                                      {/* Warning: exceeding GPU-optimal context */}
-                                      {fullGpuCtx > 0 && fullGpuCtx < maxCtx && clampedCtx > fullGpuCtx && (
-                                        <div className="flex items-start gap-2 mt-1.5 rounded-lg border border-amber-400/20 bg-amber-400/5 px-2.5 py-2">
-                                          <AlertTriangle size={13} className="text-amber-400 shrink-0 mt-0.5" />
-                                          <p className="text-[11px] leading-snug text-amber-400/80">
-                                            {t("hfBrowser.ctxExceedsGpu", { ctx: fullGpuCtx.toLocaleString() })}
-                                          </p>
-                                        </div>
-                                      )}
-                                      {/* State B: Model exceeds VRAM entirely */}
-                                      {fullGpuCtx === 0 && ramCtx > 0 && (
-                                        <div className="flex items-start gap-2 mt-1.5 rounded-lg border border-blue-400/20 bg-blue-400/5 px-2.5 py-2">
-                                          <Info size={13} className="text-blue-400 shrink-0 mt-0.5" />
-                                          <p className="text-[11px] leading-snug text-blue-300/80">
-                                            {t("hfBrowser.modelExceedsVram")}
-                                          </p>
-                                        </div>
-                                      )}
-                                    </div>
+                                      if (fMaxCtx < 1024) continue;
+                                      const fCtx = Math.min(clampedCtx, fMaxCtx);
+                                      const fEffKvCtx = recData.kvContextCap
+                                        ? Math.min(fCtx, recData.kvContextCap)
+                                        : fCtx;
+                                      const fKv = recData.kvBasePerToken
+                                        ? recData.kvBasePerToken * bpvVal * fEffKvCtx
+                                        : 0;
+                                      const { score: fScore } = calcScore(
+                                        f.size,
+                                        f.quantQuality,
+                                        fKv,
+                                        totalAvail,
+                                        recData.availableVram,
                                       );
-                                    })()}
+                                      if (fScore < 70) continue;
+                                      if (
+                                        !best ||
+                                        f.quantQuality > best.file.quantQuality ||
+                                        (f.quantQuality === best.file.quantQuality &&
+                                          fScore > best.score)
+                                      ) {
+                                        best = { file: f, score: fScore };
+                                      }
+                                    }
+                                    return best;
+                                  })();
 
-                                    {/* KV Cache type */}
-                                    <div>
-                                      <label className="text-[9px] font-semibold uppercase tracking-wider text-fg/40">
-                                        {t("hfBrowser.kvCacheType")}
-                                      </label>
-                                      <select
-                                        value={recKvType}
-                                        onChange={(e) => {
-                                          setRecKvType(e.target.value);
-                                          const bpv = KV_BPV[e.target.value] || 2;
-                                          const mx = Math.max(maxContextForBpv(selFile.size, recData.kvBasePerToken, bpv, totalAvail, recData.modelMaxContext), 1024);
-                                          setRecContext((prev) => Math.min(prev, mx));
-                                        }}
-                                        className="mt-1 w-full rounded-md border border-fg/10 bg-fg/5 px-2 py-1.5 text-[11px] text-fg focus:border-fg/25 focus:outline-none"
-                                      >
-                                        <option value="f32">F32 (maximum quality)</option>
-                                        <option value="f16">F16 (high quality)</option>
-                                        <option value="q8_0">Q8_0 (balanced)</option>
-                                        <option value="q5_1">Q5_1 (good savings)</option>
-                                        <option value="q5_0">Q5_0 (good savings)</option>
-                                        <option value="q4_1">Q4_1 (memory saver)</option>
-                                        <option value="q4_0">Q4_0 (memory saver)</option>
-                                        <option value="iq4_nl">IQ4_NL (aggressive)</option>
-                                      </select>
-                                    </div>
-
-                                    {/* Warning */}
-                                    {score < 60 && (
-                                      <div className="flex items-start gap-2 rounded-lg border border-red-400/20 bg-red-400/10 px-2.5 py-2">
-                                        <AlertTriangle size={12} className="text-red-400 shrink-0 mt-0.5" />
-                                        <p className="text-[12px] leading-snug text-red-400/90">
-                                          {t("hfBrowser.notRecommended")}
-                                        </p>
-                                      </div>
-                                    )}
-
-                                    {/* Download recommended */}
-                                    {score >= 60 && (
-                                      <button
-                                        onClick={() => queueDownload(modelInfo.modelId, recFile)}
+                                  return (
+                                    <div className="mt-2 space-y-2.5">
+                                      {/* Score hero */}
+                                      <div
                                         className={cn(
-                                          "flex w-full items-center justify-center gap-1.5 rounded-lg border border-emerald-400/30 bg-emerald-400/15 py-1.5 text-[11px] font-semibold text-emerald-500",
-                                          interactive.transition.default,
-                                          "hover:bg-emerald-400/25 active:scale-[0.97]",
+                                          "flex items-center justify-between rounded-lg px-3 py-2",
+                                          scoreBg,
                                         )}
                                       >
-                                        <Download size={12} />
-                                        {t("hfBrowser.download")} {selFile.quantization}
+                                        <div className="flex items-center gap-2">
+                                          <span className={cn("text-xl font-bold", scoreColor)}>
+                                            {score}
+                                          </span>
+                                          <div className="leading-tight">
+                                            <span
+                                              className={cn(
+                                                "text-[13px] font-semibold",
+                                                scoreColor,
+                                              )}
+                                            >
+                                              {(
+                                                {
+                                                  excellent: t("hfBrowser.runabilityExcellent"),
+                                                  good: t("hfBrowser.runabilityGood"),
+                                                  marginal: t("hfBrowser.runabilityMarginal"),
+                                                  poor: t("hfBrowser.runabilityPoor"),
+                                                  unrunnable: t("hfBrowser.runabilityUnrunnable"),
+                                                } as Record<string, string>
+                                              )[label] || label}
+                                            </span>
+                                            <p className="text-[12px] text-fg/40 flex items-center gap-1">
+                                              <Monitor size={9} />
+                                              {gpuLabel}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Upgrade suggestion */}
+                                      {upgradeSuggestion && (
+                                        <button
+                                          onClick={() => {
+                                            setRecFile(upgradeSuggestion.file.filename);
+                                            const mx = Math.max(
+                                              maxContextForBpv(
+                                                upgradeSuggestion.file.size,
+                                                recData.kvBasePerToken,
+                                                bpvSel,
+                                                totalAvail,
+                                                recData.modelMaxContext,
+                                              ),
+                                              1024,
+                                            );
+                                            setRecContext(Math.min(recContext, mx));
+                                          }}
+                                          className="flex w-full items-start gap-2 rounded-lg border border-emerald-400/20 bg-emerald-400/5 px-2.5 py-2 text-left transition hover:bg-emerald-400/10 active:scale-[0.98]"
+                                        >
+                                          <TrendingUp
+                                            size={11}
+                                            className="text-emerald-400 shrink-0 mt-0.5"
+                                          />
+                                          <div className="flex-1 min-w-0">
+                                            <p className="text-[12px] leading-snug text-emerald-400/90">
+                                              {t("hfBrowser.upgradeSuggestion", {
+                                                quant: upgradeSuggestion.file.quantization,
+                                                size: formatBytes(upgradeSuggestion.file.size),
+                                                score: upgradeSuggestion.score.toString(),
+                                              })}
+                                            </p>
+                                          </div>
+                                        </button>
+                                      )}
+
+                                      {/* Quantization */}
+                                      <div>
+                                        <label className="text-[9px] font-semibold uppercase tracking-wider text-fg/40">
+                                          {t("hfBrowser.quantization")}
+                                        </label>
+                                        <select
+                                          value={recFile}
+                                          onChange={(e) => {
+                                            setRecFile(e.target.value);
+                                            const f = recData.files.find(
+                                              (x) => x.filename === e.target.value,
+                                            );
+                                            if (f) {
+                                              const mx = Math.max(
+                                                maxContextForBpv(
+                                                  f.size,
+                                                  recData.kvBasePerToken,
+                                                  bpvSel,
+                                                  totalAvail,
+                                                  recData.modelMaxContext,
+                                                ),
+                                                1024,
+                                              );
+                                              const optimal =
+                                                f.optimalGpuCtx > 0
+                                                  ? f.optimalGpuCtx
+                                                  : f.optimalRamCtx > 0
+                                                    ? f.optimalRamCtx
+                                                    : 8192;
+                                              setRecContext(Math.min(optimal, mx));
+                                            }
+                                          }}
+                                          className="mt-1 w-full rounded-md border border-fg/10 bg-fg/5 px-2 py-1.5 text-[11px] text-fg focus:border-fg/25 focus:outline-none"
+                                        >
+                                          {recData.files.map((f) => (
+                                            <option key={f.filename} value={f.filename}>
+                                              {f.quantization} — {formatBytes(f.size)}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </div>
+
+                                      {/* Context length */}
+                                      {(() => {
+                                        const modelMax = recData.modelMaxContext;
+                                        // Max context for 100% GPU offload (model+KV+compute all in VRAM)
+                                        const fullGpuCtx = (() => {
+                                          if (recData.availableVram <= 0 || !recData.kvBasePerToken)
+                                            return 0;
+                                          const vBudget = recData.availableVram * 0.9;
+                                          const oh = computeOverhead(selFile.size);
+                                          if (selFile.size + oh >= vBudget) return 0;
+                                          const vramForKv = vBudget - selFile.size - oh;
+                                          const bpvVal = KV_BPV[recKvType] || 2;
+                                          const rawCtx = Math.floor(
+                                            vramForKv / (recData.kvBasePerToken * bpvVal),
+                                          );
+                                          if (
+                                            recData.kvContextCap &&
+                                            rawCtx >= recData.kvContextCap
+                                          )
+                                            return modelMax;
+                                          return rawCtx >= 512 ? Math.min(rawCtx, modelMax) : 0;
+                                        })();
+                                        // Max context before RAM runs out (dynamic for current KV type)
+                                        const ramCtx = (() => {
+                                          if (!recData.kvBasePerToken) return 0;
+                                          const oh = computeOverhead(selFile.size);
+                                          const remaining = Math.max(
+                                            totalAvail - selFile.size - oh,
+                                            0,
+                                          );
+                                          const bpvVal = KV_BPV[recKvType] || 2;
+                                          const rawCtx = Math.floor(
+                                            remaining / (recData.kvBasePerToken * bpvVal),
+                                          );
+                                          if (
+                                            recData.kvContextCap &&
+                                            rawCtx >= recData.kvContextCap
+                                          )
+                                            return modelMax;
+                                          return rawCtx >= 512 ? Math.min(rawCtx, modelMax) : 0;
+                                        })();
+
+                                        return (
+                                          <div>
+                                            <div className="flex items-center justify-between">
+                                              <label className="text-[9px] font-semibold uppercase tracking-wider text-fg/40">
+                                                {t("hfBrowser.contextLength")}
+                                              </label>
+                                              <span className="text-[12px] font-mono text-fg/60">
+                                                {clampedCtx.toLocaleString()}
+                                              </span>
+                                            </div>
+                                            <div className="relative mt-1">
+                                              <input
+                                                type="range"
+                                                min={1024}
+                                                max={maxCtx}
+                                                step={256}
+                                                value={clampedCtx}
+                                                onChange={(e) =>
+                                                  setRecContext(Number(e.target.value))
+                                                }
+                                                className="w-full accent-accent h-1.5"
+                                              />
+                                              {/* Optimal context tick marks below slider */}
+                                              {maxCtx > 1024 &&
+                                                (() => {
+                                                  const pct = (v: number) =>
+                                                    ((v - 1024) / (maxCtx - 1024)) * 100;
+                                                  return (
+                                                    <>
+                                                      {fullGpuCtx > 1024 && fullGpuCtx < maxCtx && (
+                                                        <div
+                                                          className="absolute bottom-0 w-0.5 bg-emerald-400 rounded-full pointer-events-none"
+                                                          style={{
+                                                            left: `${pct(fullGpuCtx)}%`,
+                                                            height: 6,
+                                                            transform: "translateY(100%)",
+                                                          }}
+                                                        />
+                                                      )}
+                                                      {ramCtx > 1024 &&
+                                                        ramCtx < maxCtx &&
+                                                        ramCtx !== fullGpuCtx && (
+                                                          <div
+                                                            className="absolute bottom-0 w-0.5 bg-amber-400 rounded-full pointer-events-none"
+                                                            style={{
+                                                              left: `${pct(ramCtx)}%`,
+                                                              height: 6,
+                                                              transform: "translateY(100%)",
+                                                            }}
+                                                          />
+                                                        )}
+                                                    </>
+                                                  );
+                                                })()}
+                                            </div>
+                                            <div className="flex justify-between text-[9px] text-fg/30">
+                                              <span>1,024</span>
+                                              <span>{maxCtx.toLocaleString()}</span>
+                                            </div>
+                                            {/* Clickable context presets */}
+                                            {(fullGpuCtx > 0 || ramCtx > 0) && (
+                                              <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5">
+                                                {fullGpuCtx > 0 && fullGpuCtx < maxCtx && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      setRecContext(Math.min(fullGpuCtx, maxCtx))
+                                                    }
+                                                    className="flex items-center gap-1.5 text-[12px] font-medium text-emerald-400/80 hover:text-emerald-300 transition-colors"
+                                                  >
+                                                    <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.4)]" />
+                                                    {t("hfBrowser.optimalGpuCtxShort", {
+                                                      ctx: fullGpuCtx.toLocaleString(),
+                                                    })}
+                                                  </button>
+                                                )}
+                                                {ramCtx > 0 && ramCtx !== fullGpuCtx && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      setRecContext(Math.min(ramCtx, maxCtx))
+                                                    }
+                                                    className="flex items-center gap-1.5 text-[12px] font-medium text-amber-400/80 hover:text-amber-300 transition-colors"
+                                                  >
+                                                    <span className="inline-block w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.4)]" />
+                                                    {t("hfBrowser.optimalRamCtxShort", {
+                                                      ctx: ramCtx.toLocaleString(),
+                                                    })}
+                                                  </button>
+                                                )}
+                                              </div>
+                                            )}
+                                            {/* Warning: exceeding GPU-optimal context */}
+                                            {fullGpuCtx > 0 &&
+                                              fullGpuCtx < maxCtx &&
+                                              clampedCtx > fullGpuCtx && (
+                                                <div className="flex items-start gap-2 mt-1.5 rounded-lg border border-amber-400/20 bg-amber-400/5 px-2.5 py-2">
+                                                  <AlertTriangle
+                                                    size={13}
+                                                    className="text-amber-400 shrink-0 mt-0.5"
+                                                  />
+                                                  <p className="text-[11px] leading-snug text-amber-400/80">
+                                                    {t("hfBrowser.ctxExceedsGpu", {
+                                                      ctx: fullGpuCtx.toLocaleString(),
+                                                    })}
+                                                  </p>
+                                                </div>
+                                              )}
+                                            {/* State B: Model exceeds VRAM entirely */}
+                                            {fullGpuCtx === 0 && ramCtx > 0 && (
+                                              <div className="flex items-start gap-2 mt-1.5 rounded-lg border border-blue-400/20 bg-blue-400/5 px-2.5 py-2">
+                                                <Info
+                                                  size={13}
+                                                  className="text-blue-400 shrink-0 mt-0.5"
+                                                />
+                                                <p className="text-[11px] leading-snug text-blue-300/80">
+                                                  {t("hfBrowser.modelExceedsVram")}
+                                                </p>
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })()}
+
+                                      {/* KV Cache type */}
+                                      <div>
+                                        <label className="text-[9px] font-semibold uppercase tracking-wider text-fg/40">
+                                          {t("hfBrowser.kvCacheType")}
+                                        </label>
+                                        <select
+                                          value={recKvType}
+                                          onChange={(e) => {
+                                            setRecKvType(e.target.value);
+                                            const bpv = KV_BPV[e.target.value] || 2;
+                                            const mx = Math.max(
+                                              maxContextForBpv(
+                                                selFile.size,
+                                                recData.kvBasePerToken,
+                                                bpv,
+                                                totalAvail,
+                                                recData.modelMaxContext,
+                                              ),
+                                              1024,
+                                            );
+                                            setRecContext((prev) => Math.min(prev, mx));
+                                          }}
+                                          className="mt-1 w-full rounded-md border border-fg/10 bg-fg/5 px-2 py-1.5 text-[11px] text-fg focus:border-fg/25 focus:outline-none"
+                                        >
+                                          <option value="f32">F32 (maximum quality)</option>
+                                          <option value="f16">F16 (high quality)</option>
+                                          <option value="q8_0">Q8_0 (balanced)</option>
+                                          <option value="q5_1">Q5_1 (good savings)</option>
+                                          <option value="q5_0">Q5_0 (good savings)</option>
+                                          <option value="q4_1">Q4_1 (memory saver)</option>
+                                          <option value="q4_0">Q4_0 (memory saver)</option>
+                                          <option value="iq4_nl">IQ4_NL (aggressive)</option>
+                                        </select>
+                                      </div>
+
+                                      {/* Warning */}
+                                      {score < 60 && (
+                                        <div className="flex items-start gap-2 rounded-lg border border-red-400/20 bg-red-400/10 px-2.5 py-2">
+                                          <AlertTriangle
+                                            size={12}
+                                            className="text-red-400 shrink-0 mt-0.5"
+                                          />
+                                          <p className="text-[12px] leading-snug text-red-400/90">
+                                            {t("hfBrowser.notRecommended")}
+                                          </p>
+                                        </div>
+                                      )}
+
+                                      {/* Download recommended */}
+                                      {score >= 60 && (
+                                        <button
+                                          onClick={() => queueDownload(modelInfo.modelId, recFile)}
+                                          className={cn(
+                                            "flex w-full items-center justify-center gap-1.5 rounded-lg border border-emerald-400/30 bg-emerald-400/15 py-1.5 text-[11px] font-semibold text-emerald-500",
+                                            interactive.transition.default,
+                                            "hover:bg-emerald-400/25 active:scale-[0.97]",
+                                          )}
+                                        >
+                                          <Download size={12} />
+                                          {t("hfBrowser.download")} {selFile.quantization}
+                                        </button>
+                                      )}
+
+                                      <button
+                                        onClick={openCompareModal}
+                                        className="flex w-full items-center justify-center gap-1 py-1 text-[12px] text-fg/55 hover:text-fg/75 transition-colors"
+                                      >
+                                        Compare
                                       </button>
-                                    )}
 
-                                    {/* More details button */}
-                                    <button
-                                      onClick={() => setDetailSheetOpen(true)}
-                                      className="flex w-full items-center justify-center gap-1 py-1 text-[12px] text-fg/40 hover:text-fg/60 transition-colors"
-                                    >
-                                      <Info size={10} />
-                                      {t("hfBrowser.moreDetails")}
-                                    </button>
-                                  </div>
-                                );
-                              })()}
+                                      {/* More details button */}
+                                      <button
+                                        onClick={() => setDetailSheetOpen(true)}
+                                        className="flex w-full items-center justify-center gap-1 py-1 text-[12px] text-fg/40 hover:text-fg/60 transition-colors"
+                                      >
+                                        <Info size={10} />
+                                        {t("hfBrowser.moreDetails")}
+                                      </button>
+                                    </div>
+                                  );
+                                })()
+                              )}
                             </div>
-                          );
-                        })()}
+                          </div>
+                        )}
 
-                        {/* Scrollable files list */}
-                        <div className="flex-1 overflow-y-auto px-3 py-3 pb-6 space-y-2">
-                          {modelInfo.files.filter((f) => f.size > 0).map((file) => {
-                            const rs = runabilityScores[file.filename];
-                            return (
-                            <div
-                              key={file.filename}
-                              className="rounded-xl border border-fg/10 bg-fg/[0.03] px-3 py-2.5"
-                            >
-                              <p
-                                className="truncate text-[12px] font-medium text-fg"
-                                title={file.filename}
-                              >
-                                {file.filename}
-                              </p>
-                              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                                <span className="rounded-md border border-accent/20 bg-accent/10 px-1.5 py-0.5 text-[9px] font-semibold text-accent/80">
-                                  {file.quantization}
-                                </span>
-                                {rs && (
-                                  <span
-                                    className={cn(
-                                      "rounded-md border px-1.5 py-0.5 text-[9px] font-semibold",
-                                      rs.label === "excellent"
-                                        ? "border-emerald-400/30 bg-emerald-400/15 text-emerald-500"
-                                        : rs.label === "good"
-                                          ? "border-blue-400/30 bg-blue-400/15 text-blue-500"
-                                          : rs.label === "marginal"
-                                            ? "border-amber-400/30 bg-amber-400/15 text-amber-500"
-                                            : rs.label === "poor"
-                                              ? "border-orange-400/30 bg-orange-400/15 text-orange-500"
-                                              : "border-red-400/30 bg-red-400/15 text-red-500",
-                                    )}
-                                    title={`Runability: ${rs.score}/100 (${rs.label})${rs.fitsInRam ? " · Fits in RAM" : ""}${rs.fitsInVram ? " · Fits in VRAM" : ""}`}
+                        {filesPanelTab === "files" && (
+                          <div className="flex-1 overflow-y-auto px-3 py-3 pb-6 space-y-2">
+                            {sortedFilesWithSize.map((file) => {
+                              const rs = runabilityScores[file.filename];
+                              return (
+                                <div
+                                  key={file.filename}
+                                  className="rounded-xl border border-fg/10 bg-fg/[0.03] px-3 py-2.5"
+                                >
+                                  <p
+                                    className="truncate text-[12px] font-medium text-fg"
+                                    title={file.filename}
                                   >
-                                    {rs.score}
-                                  </span>
-                                )}
-                                <span className="text-[12px] text-fg/45">
-                                  {formatBytes(file.size)}
-                                </span>
-                              </div>
-                              <button
-                                onClick={() => queueDownload(modelInfo.modelId, file.filename)}
-                                className={cn(
-                                  "mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-accent/30 bg-accent/15 py-1.5 text-[11px] font-semibold text-accent",
-                                  interactive.transition.default,
-                                  "hover:bg-accent/25 active:scale-[0.97]",
-                                )}
-                              >
-                                <Download size={12} />
-                                {t("hfBrowser.download")}
-                              </button>
-                            </div>
-                          );
-                          })}
-                        </div>
+                                    {file.filename}
+                                  </p>
+                                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                    <span className="rounded-md border border-accent/20 bg-accent/10 px-1.5 py-0.5 text-[9px] font-semibold text-accent/80">
+                                      {file.quantization}
+                                    </span>
+                                    {rs && (
+                                      <span
+                                        className={cn(
+                                          "rounded-md border px-1.5 py-0.5 text-[9px] font-semibold",
+                                          rs.label === "excellent"
+                                            ? "border-emerald-400/30 bg-emerald-400/15 text-emerald-500"
+                                            : rs.label === "good"
+                                              ? "border-blue-400/30 bg-blue-400/15 text-blue-500"
+                                              : rs.label === "marginal"
+                                                ? "border-amber-400/30 bg-amber-400/15 text-amber-500"
+                                                : rs.label === "poor"
+                                                  ? "border-orange-400/30 bg-orange-400/15 text-orange-500"
+                                                  : "border-red-400/30 bg-red-400/15 text-red-500",
+                                        )}
+                                        title={`Runability: ${rs.score}/100 (${rs.label})${rs.fitsInRam ? " · Fits in RAM" : ""}${rs.fitsInVram ? " · Fits in VRAM" : ""}`}
+                                      >
+                                        {rs.score}
+                                      </span>
+                                    )}
+                                    <span className="text-[12px] text-fg/45">
+                                      {formatBytes(file.size)}
+                                    </span>
+                                  </div>
+                                  <button
+                                    onClick={() => queueDownload(modelInfo.modelId, file.filename)}
+                                    className={cn(
+                                      "mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-accent/30 bg-accent/15 py-1.5 text-[11px] font-semibold text-accent",
+                                      interactive.transition.default,
+                                      "hover:bg-accent/25 active:scale-[0.97]",
+                                    )}
+                                  >
+                                    <Download size={12} />
+                                    {t("hfBrowser.download")}
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -1409,6 +2104,176 @@ export function HuggingFaceBrowserPage() {
         </AnimatePresence>
       </div>
 
+      {compareOpen && recData && (
+        <div
+          className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-[1px] p-4 flex items-center justify-center"
+          onClick={() => setCompareOpen(false)}
+        >
+          <div
+            className="w-full max-w-[1240px] max-h-[92vh] rounded-2xl border border-fg/15 bg-surface/95 shadow-2xl overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-fg/10 px-4 py-3">
+              <div>
+                <h3 className="text-sm font-semibold text-fg">Compare Configurations</h3>
+                <p className="text-[11px] text-fg/50">
+                  Compare up to 3 quantizations with independent KV cache types.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCompareOpen(false)}
+                className="rounded-md border border-fg/15 bg-fg/5 p-1.5 text-fg/60 hover:text-fg hover:border-fg/25"
+                aria-label="Close compare modal"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div className="border-b border-fg/10 px-4 py-3">
+              <div className="overflow-x-auto pb-1">
+                <div
+                  className={cn(
+                    "grid gap-2 min-w-full",
+                    compareSelections.length === 1
+                      ? "grid-cols-1"
+                      : compareSelections.length === 2
+                        ? "grid-cols-2"
+                        : "grid-cols-3",
+                  )}
+                >
+                  {compareSelections.map((selection, index) => (
+                    <div
+                      key={selection.id}
+                      className="rounded-xl border border-fg/10 bg-fg/[0.03] p-2.5 space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11px] font-semibold text-fg/70">Config {index + 1}</p>
+                        {compareSelections.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeCompareSelection(selection.id)}
+                            className="text-[10px] text-fg/40 hover:text-red-300 transition-colors"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="text-[9px] font-semibold uppercase tracking-wider text-fg/40">
+                          {t("hfBrowser.quantization")}
+                        </label>
+                        <select
+                          value={selection.filename}
+                          onChange={(e) =>
+                            updateCompareSelection(selection.id, { filename: e.target.value })
+                          }
+                          className="mt-1 w-full rounded-md border border-fg/10 bg-fg/5 px-2 py-1.5 text-[11px] text-fg focus:border-fg/25 focus:outline-none"
+                        >
+                          {recData.files.map((f) => (
+                            <option key={f.filename} value={f.filename}>
+                              {f.quantization} — {formatBytes(f.size)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[9px] font-semibold uppercase tracking-wider text-fg/40">
+                          {t("hfBrowser.kvCacheType")}
+                        </label>
+                        <select
+                          value={selection.kvType}
+                          onChange={(e) =>
+                            updateCompareSelection(selection.id, { kvType: e.target.value })
+                          }
+                          className="mt-1 w-full rounded-md border border-fg/10 bg-fg/5 px-2 py-1.5 text-[11px] text-fg focus:border-fg/25 focus:outline-none"
+                        >
+                          <option value="f32">F32 (maximum quality)</option>
+                          <option value="f16">F16 (high quality)</option>
+                          <option value="q8_0">Q8_0 (balanced)</option>
+                          <option value="q5_1">Q5_1 (good savings)</option>
+                          <option value="q5_0">Q5_0 (good savings)</option>
+                          <option value="q4_1">Q4_1 (memory saver)</option>
+                          <option value="q4_0">Q4_0 (memory saver)</option>
+                          <option value="iq4_nl">IQ4_NL (aggressive)</option>
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {compareSelections.length < 3 && (
+                <button
+                  type="button"
+                  onClick={addCompareSelection}
+                  className="mt-2 text-[11px] font-medium text-accent/80 hover:text-accent transition-colors"
+                >
+                  + Add Comparison
+                </button>
+              )}
+            </div>
+
+            <div className="flex-1 overflow-x-auto px-4 py-3">
+              <div
+                className={cn(
+                  "grid gap-3 min-w-[640px]",
+                  compareSelections.length === 1
+                    ? "grid-cols-1"
+                    : compareSelections.length === 2
+                      ? "grid-cols-2"
+                      : "grid-cols-3",
+                )}
+              >
+                {compareSelections.map((selection) => {
+                  const selectedFile =
+                    recData.files.find((f) => f.filename === selection.filename) ||
+                    recData.files[0];
+                  if (!selectedFile) return null;
+
+                  return (
+                    <div
+                      key={selection.id}
+                      className="rounded-xl border border-fg/10 bg-fg/[0.03] overflow-hidden flex flex-col min-h-0"
+                    >
+                      <div className="border-b border-fg/10 px-3 py-2">
+                        <p
+                          className="truncate text-[12px] font-semibold text-fg"
+                          title={selectedFile.filename}
+                        >
+                          {selectedFile.quantization} · {formatBytes(selectedFile.size)}
+                        </p>
+                        <p className="text-[10px] text-fg/45">
+                          KV: {selection.kvType.toUpperCase()}
+                        </p>
+                      </div>
+
+                      <div
+                        ref={(el) => {
+                          compareScrollRefs.current[selection.id] = el;
+                        }}
+                        onScroll={(e) => handleCompareReportScroll(selection.id, e)}
+                        className="overflow-y-auto max-h-[56vh] px-3 py-2"
+                      >
+                        <DetailReportContent
+                          recData={recData}
+                          selectedFile={selectedFile}
+                          kvType={selection.kvType}
+                          contextLength={recContext}
+                          t={t}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Detailed resource report bottom sheet */}
       <BottomMenu
         isOpen={detailSheetOpen}
@@ -1416,298 +2281,20 @@ export function HuggingFaceBrowserPage() {
         title={t("hfBrowser.detailedReport")}
         includeExitIcon
       >
-        {recData && (() => {
-          const selFile = recData.files.find((f) => f.filename === recFile) || recData.files[0];
-          if (!selFile) return null;
-
-          const bpv = KV_BPV[recKvType] || 2;
-          const totalAvail = recData.totalAvailable;
-          const maxCtx = Math.max(maxContextForBpv(selFile.size, recData.kvBasePerToken, bpv, totalAvail, recData.modelMaxContext), 1024);
-          const clampedCtx = Math.min(Math.max(recContext, 1024), maxCtx);
-          const effectiveKvCtx = recData.kvContextCap
-            ? Math.min(clampedCtx, recData.kvContextCap)
-            : clampedCtx;
-          const kvBytes = recData.kvBasePerToken
-            ? recData.kvBasePerToken * bpv * effectiveKvCtx
-            : 0;
-          const overhead = computeOverhead(selFile.size);
-          const totalNeeded = selFile.size + kvBytes + overhead;
-          const headroom = Math.max(totalAvail - totalNeeded, 0);
-          const vramBudget = recData.availableVram * 0.9;
-          const { score, gpuMode } = calcScore(
-            selFile.size,
-            selFile.quantQuality,
-            kvBytes,
-            totalAvail,
-            recData.availableVram,
-          );
-
-          const modelMax = recData.modelMaxContext;
-          // Dynamic full-GPU context for current KV type
-          const detailFullGpuCtx = (() => {
-            if (recData.availableVram <= 0 || !recData.kvBasePerToken) return 0;
-            if (selFile.size + overhead >= vramBudget) return 0;
-            const vramForKv = vramBudget - selFile.size - overhead;
-            const rawCtx = Math.floor(vramForKv / (recData.kvBasePerToken * bpv));
-            if (recData.kvContextCap && rawCtx >= recData.kvContextCap) return modelMax;
-            return rawCtx >= 512 ? Math.min(rawCtx, modelMax) : 0;
-          })();
-          // Dynamic max-RAM context for current KV type
-          const detailMaxRamCtx = (() => {
-            if (!recData.kvBasePerToken) return 0;
-            const remaining = Math.max(totalAvail - selFile.size - overhead, 0);
-            const rawCtx = Math.floor(remaining / (recData.kvBasePerToken * bpv));
-            if (recData.kvContextCap && rawCtx >= recData.kvContextCap) return modelMax;
-            return rawCtx >= 512 ? Math.min(rawCtx, modelMax) : 0;
-          })();
-
-          // Individual score components for breakdown (mirrors Rust score_configuration)
-          const memoryScore = (() => {
-            if (totalAvail === 0) return 50;
-            if (totalNeeded > totalAvail) return 0;
-            const r = totalAvail / totalNeeded;
-            return r < 1.2 ? 20 : r < 1.5 ? 50 : r < 2.0 ? 70 : r < 3.0 ? 85 : 100;
-          })();
-          const gpuScore = (() => {
-            if (recData.availableVram <= 0) return 0;
-            if (totalNeeded <= vramBudget) return 100;
-            if (selFile.size === 0) return 10;
-            if (selFile.size <= vramBudget) {
-              // Model fits, KV/compute spills
-              const remaining = vramBudget - selFile.size;
-              const spill = kvBytes + overhead;
-              const fitRatio = spill > 0 ? Math.min(remaining / spill, 1.0) : 1.0;
-              return Math.round(70 + fitRatio * 25);
-            }
-            // Model doesn't fit, partial layer offload
-            const offloadRatio = Math.min(vramBudget / selFile.size, 1.0);
-            return Math.round(10 + offloadRatio * 60);
-          })();
-          const kvScore = (() => {
-            if (kvBytes === 0) return 50;
-            const h = Math.max(totalAvail - selFile.size - overhead, 0);
-            if (h === 0) return 0;
-            if (h >= kvBytes) {
-              const r = h / kvBytes;
-              return r >= 2 ? 100 : Math.round(50 + 50 * (r - 1));
-            }
-            return Math.round(50 * (h / kvBytes));
-          })();
-
-          // GPU offload percentage: what % of total requirement fits in VRAM
-          const offloadPct = (() => {
-            if (recData.availableVram <= 0 || totalNeeded === 0) return 0;
-            if (totalNeeded <= vramBudget) return 100;
-            return Math.min(Math.round((vramBudget / totalNeeded) * 100), 99);
-          })();
-
-          // Recommended layers to offload (-ngl) for detail sheet
-          const detailTotalLayers = recData.arch?.blockCount;
-          const detailRecLayers = (() => {
-            if (!detailTotalLayers || detailTotalLayers <= 0) return null;
-            if (totalNeeded <= vramBudget) return detailTotalLayers;
-            if (recData.availableVram <= 0) return null;
-            const layers = Math.floor((vramBudget / totalNeeded) * detailTotalLayers);
-            return Math.max(Math.min(layers, detailTotalLayers), 0);
-          })();
-
-          // Context tip: if KV is what pushes over VRAM, calculate max ctx for full GPU
-          const fullGpuCtx = (() => {
-            if (recData.availableVram <= 0 || !recData.kvBasePerToken) return null;
-            if (totalNeeded <= vramBudget) return null; // already fits
-            if (selFile.size + overhead >= vramBudget) return null; // model itself doesn't fit
-            const vramForKv = vramBudget - selFile.size - overhead;
-            const bpvVal = KV_BPV[recKvType] || 2;
-            const maxCtxForGpu = Math.floor(vramForKv / (recData.kvBasePerToken * bpvVal));
-            if (maxCtxForGpu < 512) return null; // too low to be useful
-            return maxCtxForGpu;
-          })();
-
-          const row = (label: string, value: string, highlight?: string) => (
-            <div className="flex items-center justify-between py-1.5">
-              <span className="text-[11px] text-white/50">{label}</span>
-              <span className={cn("text-[11px] font-mono font-medium", highlight || "text-white/80")}>
-                {value}
-              </span>
-            </div>
-          );
-
-          const bar = (label: string, value: number, weight: number, color: string) => (
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-white/50">{label} <span className="text-white/25">({Math.round(weight * 100)}%)</span></span>
-                <span className={cn("text-[11px] font-mono font-semibold", color)}>{Math.round(value)}</span>
-              </div>
-              <div className="h-1 w-full rounded-full bg-white/10 overflow-hidden">
-                <div
-                  className={cn("h-full rounded-full transition-all", color.replace("text-", "bg-"))}
-                  style={{ width: `${Math.min(value, 100)}%` }}
-                />
-              </div>
-            </div>
-          );
-
-          const scoreColor = score >= 80 ? "text-emerald-400" : score >= 60 ? "text-blue-400" : score >= 40 ? "text-amber-400" : score >= 20 ? "text-orange-400" : "text-red-400";
-
-          return (
-            <div className="space-y-1">
-              {/* System resources */}
-              <MenuLabel>{t("hfBrowser.detailSystem")}</MenuLabel>
-              <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-1 divide-y divide-white/5">
-                {row(t("hfBrowser.detailRam"), formatBytes(recData.availableRam))}
-                {row(t("hfBrowser.detailVram"), recData.availableVram > 0 ? formatBytes(recData.availableVram) : "—")}
-                {recData.availableVram > 0 && row(t("hfBrowser.detailVramBudget"), formatBytes(vramBudget), "text-white/60")}
-                {recData.unifiedMemory && row(t("hfBrowser.detailMemMode"), t("hfBrowser.detailUnified"), "text-amber-400")}
-                {row(t("hfBrowser.detailTotalAvailable"), formatBytes(totalAvail))}
-              </div>
-
-              {/* Model architecture */}
-              {recData.arch && (
-                <>
-                  <MenuLabel>{t("hfBrowser.detailArchitecture")}</MenuLabel>
-                  <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-1 divide-y divide-white/5">
-                    {recData.arch.architecture && row(t("hfBrowser.detailArch"), recData.arch.architecture.toUpperCase())}
-                    {recData.arch.blockCount != null && row(t("hfBrowser.detailLayers"), recData.arch.blockCount.toString())}
-                    {recData.arch.embeddingLength != null && row(t("hfBrowser.detailEmbedding"), recData.arch.embeddingLength.toLocaleString())}
-                    {recData.arch.headCount != null && row(t("hfBrowser.detailHeads"), recData.arch.headCount.toString())}
-                    {recData.arch.headCountKv != null && row(t("hfBrowser.detailKvHeads"), recData.arch.headCountKv.toString())}
-                    {recData.arch.feedForwardLength != null && row(t("hfBrowser.detailFfn"), recData.arch.feedForwardLength.toLocaleString())}
-                    {recData.arch.contextLength != null && row(t("hfBrowser.detailTrainCtx"), recData.arch.contextLength.toLocaleString())}
-                    {recData.arch.slidingWindow != null && row(t("hfBrowser.detailSwa"), recData.arch.slidingWindow.toLocaleString())}
-                    {recData.arch.kvLoraRank != null && row(t("hfBrowser.detailMlaRank"), recData.arch.kvLoraRank.toString())}
-                    {recData.arch.incompleteParse && row(t("hfBrowser.detailParseStatus"), t("hfBrowser.detailIncomplete"), "text-amber-400")}
-                  </div>
-                </>
-              )}
-
-              <MenuDivider />
-
-              {/* Current configuration */}
-              <MenuLabel>{t("hfBrowser.detailConfig")}</MenuLabel>
-              <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-1 divide-y divide-white/5">
-                {row(t("hfBrowser.quantization"), selFile.quantization)}
-                {row(t("hfBrowser.detailModelSize"), formatBytes(selFile.size))}
-                {row(t("hfBrowser.contextLength"), clampedCtx.toLocaleString() + " tokens")}
-                {row(t("hfBrowser.kvCacheType"), recKvType.toUpperCase())}
-                {recData.kvContextCap && row(t("hfBrowser.detailEffectiveKvCtx"), effectiveKvCtx.toLocaleString() + " tokens", "text-white/60")}
-                {detailFullGpuCtx > 0 && row(t("hfBrowser.detailOptimalGpuCtx"), detailFullGpuCtx.toLocaleString() + " tokens", "text-emerald-400")}
-                {detailMaxRamCtx > 0 && row(t("hfBrowser.detailOptimalRamCtx"), detailMaxRamCtx.toLocaleString() + " tokens", "text-amber-400")}
-              </div>
-
-              {/* Memory breakdown */}
-              <MenuLabel>{t("hfBrowser.detailMemory")}</MenuLabel>
-              <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-1 divide-y divide-white/5">
-                {row(t("hfBrowser.detailWeights"), formatBytes(selFile.size))}
-                {row(t("hfBrowser.detailKvCache"), kvBytes > 0 ? formatBytes(kvBytes) : "—")}
-                {row(t("hfBrowser.detailComputeBuffer"), formatBytes(overhead))}
-                {row(t("hfBrowser.detailTotalNeeded"), formatBytes(totalNeeded), totalNeeded > totalAvail ? "text-red-400" : "text-emerald-400")}
-                {row(t("hfBrowser.detailHeadroom"), headroom > 0 ? formatBytes(headroom) : "0 B", headroom > 0 ? "text-emerald-400/70" : "text-red-400/70")}
-                {recData.availableVram > 0 && row(
-                  t("hfBrowser.detailGpuFit"),
-                  ({
-                    full: t("hfBrowser.gpuFull"),
-                    nearFull: t("hfBrowser.gpuNearFull"),
-                    kvSpill: t("hfBrowser.gpuKvSpill"),
-                    kvHeavySpill: t("hfBrowser.gpuKvHeavySpill"),
-                    mostLayers: t("hfBrowser.gpuMostLayers"),
-                    halfLayers: t("hfBrowser.gpuHalfLayers"),
-                    fewLayers: t("hfBrowser.gpuFewLayers"),
-                    cpu: t("hfBrowser.gpuCpu"),
-                  }[gpuMode]) || t("hfBrowser.gpuCpu"),
-                  ["full", "nearFull"].includes(gpuMode) ? "text-emerald-400"
-                    : ["kvSpill", "mostLayers"].includes(gpuMode) ? "text-blue-400"
-                    : ["kvHeavySpill", "halfLayers"].includes(gpuMode) ? "text-amber-400"
-                    : "text-red-400",
-                )}
-                {recData.availableVram > 0 && row(t("hfBrowser.detailOffload"), `${offloadPct}%`,
-                  offloadPct >= 100 ? "text-emerald-400" : offloadPct >= 50 ? "text-blue-400" : offloadPct > 0 ? "text-amber-400" : "text-red-400"
-                )}
-                {detailRecLayers != null && detailTotalLayers != null && detailRecLayers < detailTotalLayers && detailRecLayers > 0 &&
-                  row(t("hfBrowser.detailLayers-ngl"), `${detailRecLayers} / ${detailTotalLayers}`,
-                    detailRecLayers >= detailTotalLayers * 0.8 ? "text-blue-400" : detailRecLayers >= detailTotalLayers * 0.5 ? "text-amber-400" : "text-red-400"
-                  )
-                }
-              </div>
-
-              {/* KV Cache distribution */}
-              {kvBytes > 0 && recData.availableVram > 0 && (() => {
-                let kvVramPct: number;
-                if (totalNeeded <= vramBudget) {
-                  kvVramPct = 100; // everything fits
-                } else if (selFile.size >= vramBudget) {
-                  // Model doesn't fit — KV splits proportionally with layer offload
-                  const layerRatio = Math.min(vramBudget / selFile.size, 1.0);
-                  kvVramPct = Math.round(layerRatio * 100);
-                } else {
-                  // Model fits, KV partially spills
-                  const vramForKv = vramBudget - selFile.size - overhead;
-                  kvVramPct = vramForKv > 0 ? Math.min(Math.round((vramForKv / kvBytes) * 100), 100) : 0;
-                }
-                const kvRamPct = 100 - kvVramPct;
-                const kvOnVram = kvBytes * (kvVramPct / 100);
-                const kvOnRam = kvBytes - kvOnVram;
-
-                return (
-                  <>
-                    <MenuLabel>{t("hfBrowser.detailKvDistribution")}</MenuLabel>
-                    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-1 divide-y divide-white/5">
-                      {row(
-                        t("hfBrowser.detailKvOnGpu"),
-                        `${formatBytes(kvOnVram)} (${kvVramPct}%)`,
-                        kvVramPct >= 80 ? "text-emerald-400" : kvVramPct >= 40 ? "text-blue-400" : "text-amber-400",
-                      )}
-                      {row(
-                        t("hfBrowser.detailKvOnRam"),
-                        `${formatBytes(kvOnRam)} (${kvRamPct}%)`,
-                        kvRamPct === 0 ? "text-emerald-400/60" : kvRamPct <= 20 ? "text-blue-400" : "text-amber-400",
-                      )}
-                    </div>
-                    {kvRamPct > 0 && (
-                      <div className="flex items-start gap-2 rounded-xl border border-amber-400/15 bg-amber-400/5 px-3 py-2 mt-1">
-                        <Info size={12} className="text-amber-400 shrink-0 mb-0.5" />
-                        <p className="text-[12px] leading-snug text-amber-300/70">
-                          {t("hfBrowser.kvDistributionTip", { pct: kvRamPct.toString() })}
-                        </p>
-                      </div>
-                    )}
-                  </>
-                );
-              })()}
-
-
-              {/* Context tip */}
-              {fullGpuCtx && fullGpuCtx < clampedCtx && (
-                <div className="flex items-start gap-2 rounded-xl border border-blue-400/20 bg-blue-400/5 px-3 py-2 mt-1">
-                  <Info size={12} className="text-blue-400 shrink-0 mt-0.5" />
-                  <p className="text-[12px] leading-snug text-blue-300/80">
-                    {t("hfBrowser.detailCtxTip", { ctx: fullGpuCtx.toLocaleString() })}
-                  </p>
-                </div>
-              )}
-
-              <MenuDivider />
-
-              {/* Score breakdown */}
-              <MenuLabel>{t("hfBrowser.detailScoreBreakdown")}</MenuLabel>
-              <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 space-y-3">
-                {bar(t("hfBrowser.detailMemFitness"), memoryScore, 0.25,
-                  memoryScore >= 70 ? "text-emerald-400" : memoryScore >= 40 ? "text-amber-400" : "text-red-400")}
-                {bar(t("hfBrowser.detailGpuAccel"), gpuScore, 0.35,
-                  gpuScore >= 75 ? "text-emerald-400" : gpuScore >= 35 ? "text-amber-400" : "text-red-400")}
-                {bar(t("hfBrowser.detailKvHeadroom"), kvScore, 0.15,
-                  kvScore >= 70 ? "text-emerald-400" : kvScore >= 40 ? "text-amber-400" : "text-red-400")}
-                {bar(t("hfBrowser.detailQuantQuality"), selFile.quantQuality, 0.25,
-                  selFile.quantQuality >= 75 ? "text-emerald-400" : selFile.quantQuality >= 50 ? "text-amber-400" : "text-red-400")}
-              </div>
-
-              {/* Final score */}
-              <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 mt-2">
-                <span className="text-[12px] font-semibold text-white/70">{t("hfBrowser.detailFinalScore")}</span>
-                <span className={cn("text-2xl font-bold", scoreColor)}>{score}</span>
-              </div>
-            </div>
-          );
-        })()}
+        {recData &&
+          (() => {
+            const selFile = recData.files.find((f) => f.filename === recFile) || recData.files[0];
+            if (!selFile) return null;
+            return (
+              <DetailReportContent
+                recData={recData}
+                selectedFile={selFile}
+                kvType={recKvType}
+                contextLength={recContext}
+                t={t}
+              />
+            );
+          })()}
       </BottomMenu>
     </div>
   );
