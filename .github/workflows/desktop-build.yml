@@ -88,8 +88,9 @@ jobs:
             fi
           done < <(git tag --list 'desktop-dev-*' --sort=-creatordate)
 
+          BODY_DELIM="BODY_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
           {
-            echo "body<<'EOF'"
+            echo "body<<${BODY_DELIM}"
             echo "Automated desktop build artifacts for commit \`${GITHUB_SHA}\`."
             echo "Workflow run: ${REPO_URL}/actions/runs/${GITHUB_RUN_ID}"
             echo
@@ -114,7 +115,7 @@ jobs:
               echo "### Changes"
               echo "- No previous desktop build tag found."
             fi
-            echo "EOF"
+            echo "${BODY_DELIM}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Create prerelease
