@@ -41,7 +41,9 @@ const HTML_IMG_ALT = /alt=["']([^"']*?)["']/i;
 const HTML_IMG_WIDTH = /width=["']?(\d+)["']?/i;
 const HTML_IMG_HEIGHT = /height=["']?(\d+)["']?/i;
 
-function parseImgAttrs(tag: string): { src: string; alt: string; style: React.CSSProperties } | null {
+function parseImgAttrs(
+  tag: string,
+): { src: string; alt: string; style: React.CSSProperties } | null {
   const srcMatch = HTML_IMG_SRC.exec(tag);
   if (!srcMatch) return null;
   const src = sanitizeUrl(srcMatch[1]);
@@ -58,7 +60,12 @@ function parseImgAttrs(tag: string): { src: string; alt: string; style: React.CS
   return { src, alt: altMatch?.[1] ?? "", style };
 }
 
-function parseInline(text: string, keyPrefix: string, onImageClick?: (src: string, alt: string) => void, textColors?: TextColors): (JSX.Element | string)[] {
+function parseInline(
+  text: string,
+  keyPrefix: string,
+  onImageClick?: (src: string, alt: string) => void,
+  textColors?: TextColors,
+): (JSX.Element | string)[] {
   const nodes: (JSX.Element | string)[] = [];
   let remaining = text;
   let index = 0;
@@ -120,7 +127,11 @@ function parseInline(text: string, keyPrefix: string, onImageClick?: (src: strin
     } else if (token[0] === "*" || token[0] === "_") {
       const inner = token.slice(1, -1);
       nodes.push(
-        <em key={key} className="opacity-80" style={textColors?.italic ? { color: textColors.italic } : undefined}>
+        <em
+          key={key}
+          className="opacity-80"
+          style={textColors?.italic ? { color: textColors.italic } : undefined}
+        >
           {parseInline(inner, key, onImageClick, textColors)}
         </em>,
       );
@@ -155,7 +166,11 @@ function parseInline(text: string, keyPrefix: string, onImageClick?: (src: strin
       // Standalone [text] - render as italic with visible brackets
       const inner = token.slice(1, -1);
       nodes.push(
-        <em key={key} className="opacity-80" style={textColors?.italic ? { color: textColors.italic } : undefined}>
+        <em
+          key={key}
+          className="opacity-80"
+          style={textColors?.italic ? { color: textColors.italic } : undefined}
+        >
           [{parseInline(inner, key, onImageClick, textColors)}]
         </em>,
       );
@@ -163,7 +178,11 @@ function parseInline(text: string, keyPrefix: string, onImageClick?: (src: strin
       // Standalone (text) - render as italic with visible parentheses
       const inner = token.slice(1, -1);
       nodes.push(
-        <em key={key} className="opacity-80" style={textColors?.italic ? { color: textColors.italic } : undefined}>
+        <em
+          key={key}
+          className="opacity-80"
+          style={textColors?.italic ? { color: textColors.italic } : undefined}
+        >
           ({parseInline(inner, key, onImageClick, textColors)})
         </em>,
       );
@@ -175,7 +194,13 @@ function parseInline(text: string, keyPrefix: string, onImageClick?: (src: strin
   return nodes;
 }
 
-function flushParagraph(buffer: string[], nodes: JSX.Element[], keyIndex: { value: number }, onImageClick?: (src: string, alt: string) => void, textColors?: TextColors): void {
+function flushParagraph(
+  buffer: string[],
+  nodes: JSX.Element[],
+  keyIndex: { value: number },
+  onImageClick?: (src: string, alt: string) => void,
+  textColors?: TextColors,
+): void {
   if (buffer.length === 0) return;
   const paragraphText = buffer.join("\n").trim();
   if (!paragraphText) {
@@ -184,7 +209,11 @@ function flushParagraph(buffer: string[], nodes: JSX.Element[], keyIndex: { valu
   }
   const key = `p-${keyIndex.value++}`;
   nodes.push(
-    <p key={key} className="whitespace-pre-wrap wrap-break-word" style={textColors?.plain ? { color: textColors.plain } : undefined}>
+    <p
+      key={key}
+      className="whitespace-pre-wrap wrap-break-word"
+      style={textColors?.plain ? { color: textColors.plain } : undefined}
+    >
       {parseInline(paragraphText, key, onImageClick, textColors)}
     </p>,
   );
@@ -218,11 +247,21 @@ function flushList(
   return null;
 }
 
-function flushQuote(quoteLines: string[], nodes: JSX.Element[], keyIndex: { value: number }, onImageClick?: (src: string, alt: string) => void, textColors?: TextColors): void {
+function flushQuote(
+  quoteLines: string[],
+  nodes: JSX.Element[],
+  keyIndex: { value: number },
+  onImageClick?: (src: string, alt: string) => void,
+  textColors?: TextColors,
+): void {
   if (quoteLines.length === 0) return;
   const key = `quote-${keyIndex.value++}`;
   nodes.push(
-    <blockquote key={key} className="border-l-2 border-white/20 pl-4 text-sm italic text-gray-300" style={textColors?.quoted ? { color: textColors.quoted } : undefined}>
+    <blockquote
+      key={key}
+      className="border-l-2 border-white/20 pl-4 text-inherit leading-[inherit] italic text-gray-300"
+      style={textColors?.quoted ? { color: textColors.quoted } : undefined}
+    >
       {quoteLines.map((line, idx) => (
         <p key={idx} className="whitespace-pre-wrap">
           {parseInline(line.trim(), `${key}-${idx}`, onImageClick, textColors)}
@@ -233,7 +272,12 @@ function flushQuote(quoteLines: string[], nodes: JSX.Element[], keyIndex: { valu
   quoteLines.length = 0;
 }
 
-export function MarkdownRenderer({ content, className = "", onImageClick, textColors }: MarkdownRendererProps) {
+export function MarkdownRenderer({
+  content,
+  className = "",
+  onImageClick,
+  textColors,
+}: MarkdownRendererProps) {
   const nodes = useMemo(() => {
     const normalized = content.replace(CRLF_PATTERN, "\n");
     const lines = normalized.split("\n");
@@ -350,7 +394,7 @@ export function MarkdownRenderer({ content, className = "", onImageClick, textCo
         const HeadingTag = `h${Math.min(level, 6)}` as keyof JSX.IntrinsicElements;
         const key = `heading-${keyIndex.value++}`;
         out.push(
-          <HeadingTag key={key} className="text-base font-semibold text-white">
+          <HeadingTag key={key} className="text-inherit leading-[inherit] font-semibold text-white">
             {parseInline(headingMatch[2].trim(), key, onImageClick, textColors)}
           </HeadingTag>,
         );
@@ -417,7 +461,7 @@ export function MarkdownRenderer({ content, className = "", onImageClick, textCo
   }, [content, onImageClick, textColors]);
 
   return (
-    <div className={`markdown-renderer space-y-3 text-sm leading-relaxed ${className}`}>
+    <div className={`markdown-renderer space-y-3 text-inherit leading-[inherit] ${className}`}>
       {nodes}
     </div>
   );
