@@ -934,6 +934,41 @@ jobs:
       - name: Install Vulkan SDK
         uses: jakoch/install-vulkan-sdk-action@v1
 
+      - name: Configure Vulkan SDK environment
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:VULKAN_SDK)) {
+            throw "VULKAN_SDK was not set by the Vulkan SDK installer"
+          }
+
+          $vulkanBin = Join-Path $env:VULKAN_SDK "Bin"
+          $vulkanLib = Join-Path $env:VULKAN_SDK "Lib"
+          $vulkanInclude = Join-Path $env:VULKAN_SDK "Include"
+
+          foreach ($path in @($vulkanBin, $vulkanLib, $vulkanInclude)) {
+            if (!(Test-Path $path)) {
+              throw "Missing Vulkan SDK path: $path"
+            }
+          }
+
+          "VK_SDK_PATH=$env:VULKAN_SDK" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "Vulkan_ROOT=$env:VULKAN_SDK" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CMAKE_PREFIX_PATH=$env:VULKAN_SDK" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CPLUS_INCLUDE_PATH=$vulkanInclude" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LIB=$vulkanLib;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "INCLUDE=$vulkanInclude;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $vulkanBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+          $glslc = Get-ChildItem -Path $vulkanBin -Filter "glslc*.exe" | Select-Object -First 1
+          if ($null -eq $glslc) {
+            throw "glslc executable not found under $vulkanBin"
+          }
+
+          $vulkanInfo = Get-ChildItem -Path $vulkanBin -Filter "vulkaninfo*.exe" | Select-Object -First 1
+          if ($null -eq $vulkanInfo) {
+            throw "vulkaninfo executable not found under $vulkanBin"
+          }
+
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
@@ -1014,14 +1049,21 @@ jobs:
           if (!(Test-Path $vulkanBin)) {
             throw "Vulkan SDK bin directory not found: $vulkanBin"
           }
-          echo $vulkanBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
           $vulkanInfo = Get-ChildItem -Path $vulkanBin -Filter "vulkaninfo*.exe" | Select-Object -First 1
           if ($null -eq $vulkanInfo) {
             throw "vulkaninfo executable not found under $vulkanBin"
           }
 
-          & $vulkanInfo.FullName --summary
+          try {
+            & $vulkanInfo.FullName --summary
+            if ($LASTEXITCODE -ne 0) {
+              Write-Warning "vulkaninfo exited with code $LASTEXITCODE. Continuing because Vulkan runtime diagnostics are optional on CI runners."
+            }
+          } catch {
+            Write-Warning "vulkaninfo failed: $($_.Exception.Message)"
+            Write-Warning "Continuing because Vulkan runtime diagnostics are optional on CI runners."
+          }
           $env:CMAKE_ARGS="-DGGML_VULKAN=ON"
           bun run tauri build --config dev-config.json --features llama-gpu-vulkan
 
