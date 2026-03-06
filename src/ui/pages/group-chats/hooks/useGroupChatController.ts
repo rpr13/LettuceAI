@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { MutableRefObject, RefObject } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { impactFeedback } from "@tauri-apps/plugin-haptics";
+import { type as getPlatform } from "@tauri-apps/plugin-os";
 
 import { storageBridge } from "../../../../core/storage/files";
 import {
   listCharacters,
   listPersonas,
+  readSettings,
+  SETTINGS_UPDATED_EVENT,
   toggleGroupMessagePin,
 } from "../../../../core/storage/repo";
 import type {
@@ -85,9 +89,48 @@ export function useGroupChatController(groupSessionId?: string): GroupChatContro
   const assistantPlaceholderIdRef = useRef<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
+  const hapticsEnabledRef = useRef(false);
+  const hapticIntensityRef = useRef<any>("light");
+  const lastHapticTimeRef = useRef(0);
+  const platformRef = useRef("");
 
   const setUi = useCallback((patch: Partial<typeof ui>) => {
     dispatch({ type: "PATCH", patch });
+  }, []);
+
+  useEffect(() => {
+    platformRef.current = getPlatform();
+
+    const updateHapticsState = async () => {
+      try {
+        const nextSettings = await readSettings();
+        const accessibility = nextSettings.advancedSettings?.accessibility;
+        hapticsEnabledRef.current = accessibility?.haptics ?? false;
+        hapticIntensityRef.current = accessibility?.hapticIntensity ?? "light";
+      } catch {
+        // ignore settings read failures for haptics
+      }
+    };
+
+    void updateHapticsState();
+    window.addEventListener(SETTINGS_UPDATED_EVENT, updateHapticsState);
+    return () => window.removeEventListener(SETTINGS_UPDATED_EVENT, updateHapticsState);
+  }, []);
+
+  const triggerTypingHaptic = useCallback(async () => {
+    if (!hapticsEnabledRef.current) return;
+    const isMobile = platformRef.current === "android" || platformRef.current === "ios";
+    if (!isMobile) return;
+
+    const now = Date.now();
+    if (now - lastHapticTimeRef.current < 60) return;
+
+    lastHapticTimeRef.current = now;
+    try {
+      await impactFeedback(hapticIntensityRef.current);
+    } catch {
+      // ignore haptics plugin errors
+    }
   }, []);
 
   const currentPersona = useMemo(() => {
@@ -333,6 +376,9 @@ export function useGroupChatController(groupSessionId?: string): GroupChatContro
                 );
               });
             }
+            if (content || reasoning) {
+              void triggerTypingHaptic();
+            }
           } else if (payload && payload.type === "reasoning" && payload.data?.text) {
             setMessages((prev) => {
               return prev.map((m) =>
@@ -341,6 +387,7 @@ export function useGroupChatController(groupSessionId?: string): GroupChatContro
                   : m,
               );
             });
+            void triggerTypingHaptic();
           } else if (payload && payload.type === "error" && payload.data?.message) {
             setUi({ error: String(payload.data.message) });
           }
@@ -396,7 +443,7 @@ export function useGroupChatController(groupSessionId?: string): GroupChatContro
         selectedCharacterAvatarUrl: null,
       });
     }
-  }, [groupSessionId, ui.draft, ui.sending, messages.length, scrollToBottom, setUi]);
+  }, [groupSessionId, ui.draft, ui.sending, messages.length, scrollToBottom, setUi, triggerTypingHaptic]);
 
   const handleRegenerate = useCallback(
     async (messageId: string, forceCharacterId?: string) => {
@@ -437,6 +484,9 @@ export function useGroupChatController(groupSessionId?: string): GroupChatContro
                   ),
                 );
               }
+              if (content || reasoning) {
+                void triggerTypingHaptic();
+              }
             } else if (payload && payload.type === "reasoning" && payload.data?.text) {
               setMessages((prev) =>
                 prev.map((m) =>
@@ -445,6 +495,7 @@ export function useGroupChatController(groupSessionId?: string): GroupChatContro
                     : m,
                 ),
               );
+              void triggerTypingHaptic();
             } else if (payload && payload.type === "error" && payload.data?.message) {
               setUi({ error: String(payload.data.message) });
             }
@@ -492,7 +543,7 @@ export function useGroupChatController(groupSessionId?: string): GroupChatContro
         setUi({ regeneratingMessageId: null });
       }
     },
-    [groupSessionId, ui.regeneratingMessageId, setUi],
+    [groupSessionId, ui.regeneratingMessageId, setUi, triggerTypingHaptic],
   );
 
   const handleContinue = useCallback(
@@ -555,6 +606,9 @@ export function useGroupChatController(groupSessionId?: string): GroupChatContro
                   ),
                 );
               }
+              if (content || reasoning) {
+                void triggerTypingHaptic();
+              }
             } else if (payload && payload.type === "reasoning" && payload.data?.text) {
               setMessages((prev) =>
                 prev.map((m) =>
@@ -563,6 +617,7 @@ export function useGroupChatController(groupSessionId?: string): GroupChatContro
                     : m,
                 ),
               );
+              void triggerTypingHaptic();
             } else if (payload && payload.type === "error" && payload.data?.message) {
               setUi({ error: String(payload.data.message) });
             }
@@ -616,7 +671,7 @@ export function useGroupChatController(groupSessionId?: string): GroupChatContro
         });
       }
     },
-    [groupSessionId, ui.sending, messages.length, scrollToBottom, setUi],
+    [groupSessionId, ui.sending, messages.length, scrollToBottom, setUi, triggerTypingHaptic],
   );
 
   const getCharacterById = useCallback(
