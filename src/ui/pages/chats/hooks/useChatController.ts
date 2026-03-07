@@ -1652,19 +1652,39 @@ export function useChatController(
       ],
     });
     try {
-      const updatedMessages = messagesRef.current.map((msg) =>
-        msg.id === state.messageAction!.message.id
-          ? {
-              ...msg,
-              content: updatedContent,
-              variants: (msg.variants ?? []).map((variant) =>
-                variant.id === (msg.selectedVariantId ?? variant.id)
-                  ? { ...variant, content: updatedContent }
-                  : variant,
-              ),
-            }
-          : msg,
-      );
+      const editedMessageId = state.messageAction.message.id;
+      const editedMessageIndex = messagesRef.current.findIndex((msg) => msg.id === editedMessageId);
+      if (editedMessageIndex === -1) {
+        throw new Error("Message not found");
+      }
+
+      const messagesAfter = messagesRef.current.slice(editedMessageIndex + 1);
+      const hasPinnedAfter = messagesAfter.some((msg) => msg.isPinned);
+      if (hasPinnedAfter) {
+        throw new Error(
+          "Cannot edit this message while pinned messages exist after it. Unpin them first.",
+        );
+      }
+
+      if (messagesAfter.length > 0) {
+        await deleteMessagesAfter(state.session.id, editedMessageId);
+      }
+
+      const updatedMessages = messagesRef.current
+        .slice(0, editedMessageIndex + 1)
+        .map((msg) =>
+          msg.id === editedMessageId
+            ? {
+                ...msg,
+                content: updatedContent,
+                variants: (msg.variants ?? []).map((variant) =>
+                  variant.id === (msg.selectedVariantId ?? variant.id)
+                    ? { ...variant, content: updatedContent }
+                    : variant,
+                ),
+              }
+            : msg,
+        );
       const updatedSession: Session = {
         ...state.session,
         messages: updatedMessages,
