@@ -899,6 +899,7 @@ jobs:
     runs-on: blacksmith-4vcpu-windows-2025
     env:
       APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
+      WINDOWS_VULKAN_SDK_VERSION: "1.3.296.0"
 
     steps:
       - name: Checkout
@@ -932,10 +933,9 @@ jobs:
       - name: Install Vulkan SDK
         shell: pwsh
         run: |
-          $latestInfo = Invoke-RestMethod -Uri "https://vulkan.lunarg.com/sdk/latest/windows.json"
-          $sdkVersion = $latestInfo.windows
+          $sdkVersion = $env:WINDOWS_VULKAN_SDK_VERSION
           if ([string]::IsNullOrWhiteSpace($sdkVersion)) {
-            throw "Unable to determine the latest Windows Vulkan SDK version."
+            throw "WINDOWS_VULKAN_SDK_VERSION was not set."
           }
 
           $installerPath = Join-Path $env:RUNNER_TEMP "vulkan_sdk.exe"
@@ -1076,7 +1076,12 @@ jobs:
           CMAKE_MSVC_RUNTIME_LIBRARY: "MultiThreadedDLL"
           CMAKE_GENERATOR: "Ninja"
           CMAKE_BUILD_PARALLEL_LEVEL: "2"
+          CMAKE_VERBOSE: "1"
+          CMAKE_VERBOSE_MAKEFILE: "ON"
+          CMAKE_PROJECT_TOP_LEVEL_INCLUDES: "${{ github.workspace }}\\src-tauri\\cmake\\windows-vulkan-overrides.cmake"
           CARGO_BUILD_JOBS: "2"
+          CARGO_PROFILE_RELEASE_BUILD_OVERRIDE_DEBUG: "true"
+          RUST_BACKTRACE: "1"
           CC: "cl.exe"
           CXX: "cl.exe"
           CMAKE_C_COMPILER: "cl.exe"
@@ -1105,7 +1110,6 @@ jobs:
             Write-Warning "vulkaninfo failed: $($_.Exception.Message)"
             Write-Warning "Continuing because Vulkan runtime diagnostics are optional on CI runners."
           }
-          $env:CMAKE_ARGS="-DGGML_VULKAN=ON -DGGML_CCACHE=OFF"
           bun run tauri build --config dev-config.json --features llama-gpu-vulkan
 
       - name: Package Windows Vulkan zip
