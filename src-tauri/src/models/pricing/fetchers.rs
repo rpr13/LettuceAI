@@ -2,8 +2,200 @@ use crate::api::{api_request, ApiRequest};
 use crate::models::ModelPricing;
 use crate::pricing_cache;
 use crate::utils::{log_error, log_info, log_warn};
+use serde_json::Value;
 use std::collections::HashMap;
 use tauri::AppHandle;
+
+#[derive(Debug, Clone)]
+pub struct OpenRouterProviderPricing {
+    pub provider_name: String,
+    pub provider_display_name: Option<String>,
+    pub pricing: ModelPricing,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct OpenRouterGenerationDetails {
+    pub generation_id: String,
+    pub provider_name: Option<String>,
+    pub native_prompt_tokens: Option<u64>,
+    pub native_completion_tokens: Option<u64>,
+    pub total_cost: Option<f64>,
+}
+
+fn parse_model_pricing(pricing_obj: &Value) -> Option<ModelPricing> {
+    Some(ModelPricing {
+        prompt: extract_pricing_value(pricing_obj.get("prompt"))?,
+        completion: extract_pricing_value(pricing_obj.get("completion"))?,
+        request: extract_pricing_value(pricing_obj.get("request")).unwrap_or_else(|| "0".into()),
+        image: extract_pricing_value(pricing_obj.get("image")).unwrap_or_else(|| "0".into()),
+        image_output: extract_pricing_value(pricing_obj.get("image_output"))
+            .unwrap_or_else(|| "0".into()),
+        web_search: extract_pricing_value(pricing_obj.get("web_search"))
+            .unwrap_or_else(|| "0".into()),
+        internal_reasoning: extract_pricing_value(pricing_obj.get("internal_reasoning"))
+            .unwrap_or_else(|| "0".into()),
+        input_cache_read: extract_pricing_value(pricing_obj.get("input_cache_read"))
+            .unwrap_or_else(|| "0".into()),
+        input_cache_write: extract_pricing_value(pricing_obj.get("input_cache_write"))
+            .unwrap_or_else(|| "0".into()),
+    })
+}
+
+fn build_openrouter_auth_headers(api_key: &str) -> HashMap<String, String> {
+    let mut headers = HashMap::new();
+    if !api_key.trim().is_empty() {
+        headers.insert("Authorization".to_string(), format!("Bearer {}", api_key));
+    }
+    headers
+}
+
+pub async fn fetch_openrouter_provider_pricings(
+    app: AppHandle,
+    api_key: &str,
+    model_id: &str,
+) -> Result<Vec<OpenRouterProviderPricing>, String> {
+    let request = ApiRequest {
+        url: format!("https://openrouter.ai/api/v1/models/{}/endpoints", model_id),
+        method: Some("GET".to_string()),
+        headers: Some(build_openrouter_auth_headers(api_key)),
+        query: None,
+        body: None,
+        timeout_ms: Some(30_000),
+        stream: None,
+        request_id: None,
+        provider_id: Some("openrouter".to_string()),
+    };
+
+    let response = api_request(app.clone(), request).await?;
+    if !response.ok {
+        return Err(crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            format!(
+                "OpenRouter endpoint pricing request failed with status {}",
+                response.status
+            ),
+        ));
+    }
+
+    let endpoints = response
+        .data
+        .get("data")
+        .and_then(|d| d.get("endpoints"))
+        .and_then(|e| e.as_array())
+        .ok_or_else(|| {
+            crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                "OpenRouter endpoint response missing endpoints array",
+            )
+        })?;
+
+    let mut out = Vec::new();
+    for endpoint in endpoints {
+        let Some(pricing_obj) = endpoint.get("pricing") else {
+            continue;
+        };
+        let Some(provider_name) = endpoint.get("provider_name").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let Some(pricing) = parse_model_pricing(pricing_obj) else {
+            continue;
+        };
+
+        out.push(OpenRouterProviderPricing {
+            provider_name: provider_name.to_string(),
+            provider_display_name: endpoint
+                .get("provider_display_name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            pricing,
+        });
+    }
+
+    Ok(out)
+}
+
+pub async fn fetch_openrouter_generation_details(
+    app: AppHandle,
+    api_key: &str,
+    generation_id: &str,
+) -> Result<Option<OpenRouterGenerationDetails>, String> {
+    let request = ApiRequest {
+        url: "https://openrouter.ai/api/v1/generation".to_string(),
+        method: Some("GET".to_string()),
+        headers: Some(build_openrouter_auth_headers(api_key)),
+        query: Some({
+            let mut query = HashMap::new();
+            query.insert("id".to_string(), Value::String(generation_id.to_string()));
+            query
+        }),
+        body: None,
+        timeout_ms: Some(30_000),
+        stream: None,
+        request_id: None,
+        provider_id: Some("openrouter".to_string()),
+    };
+
+    let response = api_request(app.clone(), request).await?;
+    if !response.ok {
+        log_warn(
+            &app,
+            "cost_calculator",
+            format!(
+                "OpenRouter generation lookup failed for {} with status {}",
+                generation_id, response.status
+            ),
+        );
+        return Ok(None);
+    }
+
+    let root = response.data.get("data").unwrap_or(&response.data);
+
+    Ok(Some(OpenRouterGenerationDetails {
+        generation_id: generation_id.to_string(),
+        provider_name: root
+            .get("provider_name")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        native_prompt_tokens: root
+            .get("native_tokens_prompt")
+            .and_then(|v| v.as_u64())
+            .or_else(|| root.get("tokens_prompt").and_then(|v| v.as_u64())),
+        native_completion_tokens: root
+            .get("native_tokens_completion")
+            .and_then(|v| v.as_u64())
+            .or_else(|| root.get("tokens_completion").and_then(|v| v.as_u64())),
+        total_cost: root
+            .get("total_cost")
+            .and_then(|v| v.as_f64())
+            .or_else(|| root.get("cost").and_then(|v| v.as_f64())),
+    }))
+}
+
+fn normalize_provider_name(name: &str) -> String {
+    name.chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .flat_map(|c| c.to_lowercase())
+        .collect()
+}
+
+pub fn find_openrouter_provider_pricing<'a>(
+    provider_pricings: &'a [OpenRouterProviderPricing],
+    provider_name: &str,
+) -> Option<&'a OpenRouterProviderPricing> {
+    let normalized_target = normalize_provider_name(provider_name);
+
+    provider_pricings.iter().find(|entry| {
+        normalize_provider_name(&entry.provider_name) == normalized_target
+            || entry
+                .provider_display_name
+                .as_deref()
+                .map(normalize_provider_name)
+                .as_deref()
+                == Some(normalized_target.as_str())
+    })
+}
 
 /// Fetch pricing for OpenRouter models using the endpoints endpoint
 pub async fn fetch_openrouter_model_pricing(
@@ -38,11 +230,7 @@ pub async fn fetch_openrouter_model_pricing(
     let request = ApiRequest {
         url: format!("https://openrouter.ai/api/v1/models/{}/endpoints", model_id),
         method: Some("GET".to_string()),
-        headers: Some({
-            let mut h = HashMap::new();
-            h.insert("Authorization".to_string(), format!("Bearer {}", api_key));
-            h
-        }),
+        headers: Some(build_openrouter_auth_headers(api_key)),
         query: None,
         body: None,
         timeout_ms: Some(30_000),
@@ -150,21 +338,7 @@ fn get_cheapest_endpoint_pricing(endpoints: &[serde_json::Value]) -> Option<Mode
     // Extract pricing from best endpoint
     best_endpoint.and_then(|(_, _, endpoint)| {
         if let Some(pricing_obj) = endpoint.get("pricing") {
-            let prompt = extract_pricing_value(pricing_obj.get("prompt"))?;
-            let completion = extract_pricing_value(pricing_obj.get("completion"))?;
-
-            Some(ModelPricing {
-                prompt,
-                completion,
-                request: extract_pricing_value(pricing_obj.get("request"))
-                    .unwrap_or_else(|| "0".to_string()),
-                image: extract_pricing_value(pricing_obj.get("image"))
-                    .unwrap_or_else(|| "0".to_string()),
-                web_search: extract_pricing_value(pricing_obj.get("web_search"))
-                    .unwrap_or_else(|| "0".to_string()),
-                internal_reasoning: extract_pricing_value(pricing_obj.get("internal_reasoning"))
-                    .unwrap_or_else(|| "0".to_string()),
-            })
+            parse_model_pricing(pricing_obj)
         } else {
             None
         }

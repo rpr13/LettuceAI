@@ -1,7 +1,10 @@
 use tauri::AppHandle;
 use uuid::Uuid;
 
-use crate::models::{calculate_request_cost, get_model_pricing};
+use crate::models::{
+    calculate_openrouter_request_cost, fetch_openrouter_generation_details,
+    fetch_openrouter_provider_pricings, find_openrouter_provider_pricing, OpenRouterCostInput,
+};
 use crate::usage::{
     add_usage_record,
     tracking::{RequestUsage, UsageFinishReason, UsageOperationType},
@@ -52,10 +55,6 @@ impl ChatContext {
 
     pub fn app(&self) -> &AppHandle {
         &self.app
-    }
-
-    pub fn app_clone(&self) -> AppHandle {
-        self.app.clone()
     }
 
     pub fn find_character(&self, character_id: &str) -> Result<Character, String> {
@@ -127,6 +126,188 @@ pub fn resolve_api_key(
         line!(),
         "Provider credential missing API key",
     ))
+}
+
+fn insert_openrouter_usage_metadata(
+    metadata: &mut std::collections::HashMap<String, String>,
+    usage: &UsageSummary,
+) {
+    if let Some(response_id) = &usage.response_id {
+        metadata.insert("openrouter_response_id".to_string(), response_id.clone());
+    }
+    if let Some(api_cost) = usage.api_cost {
+        metadata.insert("openrouter_api_cost".to_string(), api_cost.to_string());
+    }
+    if let Some(cached_prompt_tokens) = usage.cached_prompt_tokens {
+        metadata.insert(
+            "openrouter_cached_prompt_tokens".to_string(),
+            cached_prompt_tokens.to_string(),
+        );
+    }
+    if let Some(cache_write_tokens) = usage.cache_write_tokens {
+        metadata.insert(
+            "openrouter_cache_write_tokens".to_string(),
+            cache_write_tokens.to_string(),
+        );
+    }
+    if let Some(web_search_requests) = usage.web_search_requests {
+        metadata.insert(
+            "openrouter_web_search_requests".to_string(),
+            web_search_requests.to_string(),
+        );
+    }
+}
+
+pub async fn apply_openrouter_cost_to_usage(
+    app: &AppHandle,
+    request_usage: &mut RequestUsage,
+    usage_info: &UsageSummary,
+    model_name: &str,
+    api_key: &str,
+    log_scope: &str,
+) {
+    insert_openrouter_usage_metadata(&mut request_usage.metadata, usage_info);
+
+    let provider_pricings =
+        match fetch_openrouter_provider_pricings(app.clone(), api_key, model_name).await {
+            Ok(pricings) if !pricings.is_empty() => pricings,
+            Ok(_) => {
+                log_warn(
+                    app,
+                    log_scope,
+                    format!("no OpenRouter provider pricing found for {}", model_name),
+                );
+                return;
+            }
+            Err(err) => {
+                log_error(
+                    app,
+                    log_scope,
+                    format!("failed to fetch OpenRouter provider pricing: {}", err),
+                );
+                return;
+            }
+        };
+
+    let generation = match usage_info.response_id.as_deref() {
+        Some(response_id) => {
+            match fetch_openrouter_generation_details(app.clone(), api_key, response_id).await {
+                Ok(details) => details,
+                Err(err) => {
+                    log_warn(
+                        app,
+                        log_scope,
+                        format!("failed to fetch OpenRouter generation details: {}", err),
+                    );
+                    None
+                }
+            }
+        }
+        None => None,
+    };
+
+    let provider_name = generation
+        .as_ref()
+        .and_then(|details| details.provider_name.clone());
+
+    if let Some(provider_name) = &provider_name {
+        request_usage.metadata.insert(
+            "openrouter_provider_name".to_string(),
+            provider_name.clone(),
+        );
+    }
+
+    let Some(pricing) = provider_name
+        .as_deref()
+        .and_then(|provider_name| {
+            find_openrouter_provider_pricing(&provider_pricings, provider_name)
+        })
+        .map(|entry| entry.pricing.clone())
+        .or_else(|| provider_pricings.first().map(|entry| entry.pricing.clone()))
+    else {
+        log_warn(
+            app,
+            log_scope,
+            format!(
+                "unable to resolve OpenRouter provider pricing for {}",
+                model_name
+            ),
+        );
+        return;
+    };
+
+    if provider_name.is_none() {
+        request_usage.metadata.insert(
+            "openrouter_pricing_match".to_string(),
+            "fallback_first_provider".to_string(),
+        );
+    } else {
+        request_usage.metadata.insert(
+            "openrouter_pricing_match".to_string(),
+            "matched_provider_name".to_string(),
+        );
+    }
+
+    let prompt_tokens = generation
+        .as_ref()
+        .and_then(|details| details.native_prompt_tokens)
+        .or(usage_info.prompt_tokens)
+        .unwrap_or(0);
+    let completion_tokens = generation
+        .as_ref()
+        .and_then(|details| details.native_completion_tokens)
+        .or(usage_info.completion_tokens)
+        .unwrap_or(0);
+    let authoritative_total_cost = generation
+        .as_ref()
+        .and_then(|details| details.total_cost)
+        .or(usage_info.api_cost);
+
+    if let Some(total_cost) = generation.as_ref().and_then(|details| details.total_cost) {
+        request_usage.metadata.insert(
+            "openrouter_generation_total_cost".to_string(),
+            total_cost.to_string(),
+        );
+    }
+
+    let cost_input = OpenRouterCostInput {
+        prompt_tokens,
+        completion_tokens,
+        cached_prompt_tokens: usage_info.cached_prompt_tokens.unwrap_or(0),
+        cache_write_tokens: usage_info.cache_write_tokens.unwrap_or(0),
+        reasoning_tokens: usage_info.reasoning_tokens.unwrap_or(0),
+        web_search_requests: usage_info.web_search_requests.unwrap_or(0),
+        authoritative_total_cost,
+    };
+
+    if let Some(cost) = calculate_openrouter_request_cost(&cost_input, &pricing) {
+        request_usage.cost = Some(cost.clone());
+        request_usage.prompt_tokens = Some(prompt_tokens);
+        request_usage.completion_tokens = Some(completion_tokens);
+        request_usage.total_tokens = Some(prompt_tokens + completion_tokens);
+
+        if let Some(authoritative_total_cost) = authoritative_total_cost {
+            request_usage.metadata.insert(
+                "openrouter_authoritative_total_cost".to_string(),
+                authoritative_total_cost.to_string(),
+            );
+        }
+
+        log_info(
+            app,
+            log_scope,
+            format!(
+                "calculated OpenRouter routed cost for provider={:?}: ${:.6}",
+                provider_name, cost.total_cost
+            ),
+        );
+    } else {
+        log_error(
+            app,
+            log_scope,
+            "failed to calculate OpenRouter routed cost".to_string(),
+        );
+    }
 }
 
 pub async fn record_usage_if_available(
@@ -201,52 +382,15 @@ pub async fn record_usage_if_available(
     }
 
     if provider_cred.provider_id.eq_ignore_ascii_case("openrouter") {
-        match get_model_pricing(
-            context.app_clone(),
-            &provider_cred.provider_id,
+        apply_openrouter_cost_to_usage(
+            context.app(),
+            &mut request_usage,
+            usage_info,
             &model.name,
-            Some(api_key),
+            api_key,
+            log_scope,
         )
-        .await
-        {
-            Ok(Some(pricing)) => {
-                match calculate_request_cost(
-                    usage_info.prompt_tokens.unwrap_or(0),
-                    usage_info.completion_tokens.unwrap_or(0),
-                    &pricing,
-                ) {
-                    Some(cost) => {
-                        request_usage.cost = Some(cost.clone());
-                        log_info(
-                            context.app(),
-                            log_scope,
-                            format!("calculated cost for request: ${:.6}", cost.total_cost),
-                        );
-                    }
-                    None => {
-                        log_error(
-                            context.app(),
-                            log_scope,
-                            "failed to calculate request cost".to_string(),
-                        );
-                    }
-                }
-            }
-            Ok(None) => {
-                log_warn(
-                    context.app(),
-                    log_scope,
-                    "no pricing found for model (might be free)".to_string(),
-                );
-            }
-            Err(err) => {
-                log_error(
-                    context.app(),
-                    log_scope,
-                    format!("failed to fetch pricing: {}", err),
-                );
-            }
-        }
+        .await;
     }
 
     if let Err(err) = add_usage_record(context.app(), request_usage) {

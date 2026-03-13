@@ -302,11 +302,11 @@ pub fn extract_usage(data: &Value) -> Option<UsageSummary> {
                     Value::Object(obj) => usage_from_map(obj),
                     _ => extract_usage(usage_value),
                 } {
-                    return Some(summary);
+                    return Some(enrich_usage_summary_from_map(summary, map));
                 }
             }
             if let Some(summary) = usage_from_map(map) {
-                return Some(summary);
+                return Some(enrich_usage_summary_from_map(summary, map));
             }
             for value in map.values() {
                 if let Some(summary) = extract_usage(value) {
@@ -389,6 +389,28 @@ fn usage_from_map(map: &Map<String, Value>) -> Option<UsageSummary> {
                     .and_then(|details| take_first(details, &["image_tokens", "imageTokens"]))
             })
     });
+    let cached_prompt_tokens = map
+        .get("prompt_tokens_details")
+        .and_then(|v| v.as_object())
+        .and_then(|details| take_first(details, &["cached_tokens", "cachedTokens"]));
+    let cache_write_tokens = map
+        .get("prompt_tokens_details")
+        .and_then(|v| v.as_object())
+        .and_then(|details| take_first(details, &["cache_write_tokens", "cacheWriteTokens"]));
+    let web_search_requests = map
+        .get("server_tool_use")
+        .and_then(|v| v.as_object())
+        .and_then(|details| {
+            take_first(
+                details,
+                &[
+                    "web_search_requests",
+                    "webSearchRequests",
+                    "search_requests",
+                ],
+            )
+        });
+    let api_cost = take_first_f64(map, &["cost", "total_cost", "totalCost"]);
     let total_tokens = take_first(map, &["total_tokens", "totalTokens"]).or_else(|| {
         match (prompt_tokens, completion_tokens) {
             (Some(p), Some(c)) => Some(p + c),
@@ -423,13 +445,42 @@ fn usage_from_map(map: &Map<String, Value>) -> Option<UsageSummary> {
             prompt_tokens,
             completion_tokens,
             total_tokens,
+            cached_prompt_tokens,
+            cache_write_tokens,
             reasoning_tokens,
             image_tokens,
+            web_search_requests,
+            api_cost,
+            response_id: None,
             first_token_ms,
             tokens_per_second,
             finish_reason,
         })
     }
+}
+
+fn enrich_usage_summary_from_map(
+    mut summary: UsageSummary,
+    map: &Map<String, Value>,
+) -> UsageSummary {
+    if summary.response_id.is_none() {
+        summary.response_id = map
+            .get("id")
+            .or_else(|| map.get("generation_id"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+    }
+
+    if summary.api_cost.is_none() {
+        summary.api_cost = map
+            .get("usage")
+            .and_then(|v| v.as_object())
+            .and_then(|usage| usage.get("cost"))
+            .and_then(parse_float_value)
+            .or_else(|| map.get("cost").and_then(parse_float_value));
+    }
+
+    summary
 }
 
 fn parse_token_value(value: &Value) -> Option<u64> {

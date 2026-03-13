@@ -19,7 +19,7 @@ use rusqlite::OptionalExtension;
 
 use crate::abort_manager::AbortRegistry;
 use crate::api::{api_request, ApiRequest, ApiResponse};
-use crate::models::get_model_pricing;
+use crate::chat_manager::service::{apply_openrouter_cost_to_usage, resolve_api_key};
 use crate::usage::add_usage_record;
 use crate::usage::tracking::{RequestUsage, UsageFinishReason, UsageOperationType};
 
@@ -39,7 +39,6 @@ use crate::chat_manager::prompts::{
 use crate::chat_manager::request::{
     extract_error_message, extract_reasoning, extract_text, extract_usage,
 };
-use crate::chat_manager::service::resolve_api_key;
 use crate::chat_manager::storage::{
     load_personas, load_settings, resolve_provider_credential_for_model, select_model,
 };
@@ -51,7 +50,6 @@ use crate::chat_manager::types::{
     PromptEntryRole, ProviderCredential, Settings, SystemPromptEntry,
 };
 use crate::embedding_model;
-use crate::models::calculate_request_cost;
 use crate::storage_manager::db::{now_ms, DbConnection, SwappablePool};
 use crate::storage_manager::group_sessions::{
     self, group_session_update_memories_internal, GroupMessage, GroupParticipation, GroupSession,
@@ -629,44 +627,16 @@ async fn record_group_usage(
         request_usage.summary_tokens = Some(summary_token_count);
     }
 
-    // Calculate cost for OpenRouter
     if provider_cred.provider_id.eq_ignore_ascii_case("openrouter") {
-        match get_model_pricing(
-            app.clone(),
-            &provider_cred.provider_id,
+        apply_openrouter_cost_to_usage(
+            app,
+            &mut request_usage,
+            usage_info,
             &model.name,
-            Some(api_key),
+            api_key,
+            log_scope,
         )
-        .await
-        {
-            Ok(Some(pricing)) => {
-                if let Some(cost) = calculate_request_cost(
-                    usage_info.prompt_tokens.map(|v| v as u64).unwrap_or(0),
-                    usage_info.completion_tokens.map(|v| v as u64).unwrap_or(0),
-                    &pricing,
-                ) {
-                    request_usage.cost = Some(cost.clone());
-                    log_info(
-                        app,
-                        log_scope,
-                        format!(
-                            "calculated cost for group chat request: ${:.6}",
-                            cost.total_cost
-                        ),
-                    );
-                }
-            }
-            Ok(None) => {
-                log_warn(
-                    app,
-                    log_scope,
-                    "no pricing found for model (might be free)".to_string(),
-                );
-            }
-            Err(err) => {
-                log_error(app, log_scope, format!("failed to fetch pricing: {}", err));
-            }
-        }
+        .await;
     }
 
     if let Err(e) = add_usage_record(app, request_usage) {
@@ -720,36 +690,16 @@ async fn record_decision_maker_usage(
         metadata: Default::default(),
     };
 
-    // Calculate cost for OpenRouter
     if provider_cred.provider_id.eq_ignore_ascii_case("openrouter") {
-        match get_model_pricing(
-            app.clone(),
-            &provider_cred.provider_id,
+        apply_openrouter_cost_to_usage(
+            app,
+            &mut request_usage,
+            usage_info,
             &model.name,
-            Some(api_key),
+            api_key,
+            log_scope,
         )
-        .await
-        {
-            Ok(Some(pricing)) => {
-                if let Some(cost) = calculate_request_cost(
-                    usage_info.prompt_tokens.map(|v| v as u64).unwrap_or(0),
-                    usage_info.completion_tokens.map(|v| v as u64).unwrap_or(0),
-                    &pricing,
-                ) {
-                    request_usage.cost = Some(cost.clone());
-                    log_info(
-                        app,
-                        log_scope,
-                        format!(
-                            "calculated cost for decision maker: ${:.6}",
-                            cost.total_cost
-                        ),
-                    );
-                }
-            }
-            Ok(None) => {}
-            Err(_) => {}
-        }
+        .await;
     }
 
     if let Err(e) = add_usage_record(app, request_usage) {

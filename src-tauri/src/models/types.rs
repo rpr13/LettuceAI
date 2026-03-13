@@ -4,22 +4,31 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelPricing {
-    /// Price per 1k input tokens
+    /// Price per input token in USD.
     pub prompt: String,
-    /// Price per 1k output tokens
+    /// Price per output token in USD.
     pub completion: String,
-    /// Price per request
+    /// Flat price per request in USD.
     #[serde(default)]
     pub request: String,
-    /// Price per image
+    /// Price per image-related unit in USD.
     #[serde(default)]
     pub image: String,
+    /// Price per output image-related unit in USD.
+    #[serde(default)]
+    pub image_output: String,
     /// Price per web search
     #[serde(default)]
     pub web_search: String,
     /// Price per internal reasoning token
     #[serde(default)]
     pub internal_reasoning: String,
+    /// Price per cached prompt token read in USD.
+    #[serde(default)]
+    pub input_cache_read: String,
+    /// Price per cached prompt token write in USD.
+    #[serde(default)]
+    pub input_cache_write: String,
 }
 
 /// Cost calculation result for a single request.

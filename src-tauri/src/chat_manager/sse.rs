@@ -467,74 +467,111 @@ pub fn usage_from_value(v: &Value) -> Option<UsageSummary> {
     // Support both snake_case "usage" (OpenAI) and camelCase "usageMetadata" (Gemini)
     let u = v.get("usage").or_else(|| v.get("usageMetadata"));
 
-    let (prompt_tokens, completion_tokens, reasoning_tokens, image_tokens, total_tokens) =
-        if let Some(u) = u {
-            // Log the usage metadata for debugging
-            crate::utils::log_debug_global(
-                "sse_usage",
-                format!("Usage metadata received: {:?}", u),
-            );
+    let (
+        prompt_tokens,
+        completion_tokens,
+        reasoning_tokens,
+        image_tokens,
+        cached_prompt_tokens,
+        cache_write_tokens,
+        web_search_requests,
+        api_cost,
+        total_tokens,
+    ) = if let Some(u) = u {
+        // Log the usage metadata for debugging
+        crate::utils::log_debug_global("sse_usage", format!("Usage metadata received: {:?}", u));
 
-            let prompt_tokens = take_first(
-                u,
+        let prompt_tokens = take_first(
+            u,
+            &[
+                "prompt_tokens",
+                "input_tokens",
+                "promptTokens",
+                "inputTokens",
+                "promptTokenCount", // Gemini-specific
+            ],
+        );
+        let completion_tokens = take_first(
+            u,
+            &[
+                "completion_tokens",
+                "output_tokens",
+                "completionTokens",
+                "outputTokens",
+                "candidatesTokenCount", // Gemini-specific
+            ],
+        );
+        let reasoning_tokens = take_first(
+            u,
+            &[
+                "reasoning_tokens",
+                "reasoningTokens",
+                "thinking_tokens",
+                "thinkingTokens",
+                "thoughtsTokenCount", // Gemini-specific
+            ],
+        )
+        .or_else(|| {
+            u.get("completion_tokens_details")
+                .and_then(|d| take_first(d, &["reasoning_tokens", "reasoningTokens"]))
+        });
+        let image_tokens = take_first(u, &["image_tokens", "imageTokens"]).or_else(|| {
+            u.get("prompt_tokens_details")
+                .and_then(|d| take_first(d, &["image_tokens", "imageTokens", "cached_tokens"]))
+        });
+        let cached_prompt_tokens = u
+            .get("prompt_tokens_details")
+            .and_then(|d| take_first(d, &["cached_tokens", "cachedTokens"]));
+        let cache_write_tokens = u
+            .get("prompt_tokens_details")
+            .and_then(|d| take_first(d, &["cache_write_tokens", "cacheWriteTokens"]));
+        let web_search_requests = u.get("server_tool_use").and_then(|d| {
+            take_first(
+                d,
                 &[
-                    "prompt_tokens",
-                    "input_tokens",
-                    "promptTokens",
-                    "inputTokens",
-                    "promptTokenCount", // Gemini-specific
-                ],
-            );
-            let completion_tokens = take_first(
-                u,
-                &[
-                    "completion_tokens",
-                    "output_tokens",
-                    "completionTokens",
-                    "outputTokens",
-                    "candidatesTokenCount", // Gemini-specific
-                ],
-            );
-            let reasoning_tokens = take_first(
-                u,
-                &[
-                    "reasoning_tokens",
-                    "reasoningTokens",
-                    "thinking_tokens",
-                    "thinkingTokens",
-                    "thoughtsTokenCount", // Gemini-specific
+                    "web_search_requests",
+                    "webSearchRequests",
+                    "search_requests",
                 ],
             )
-            .or_else(|| {
-                u.get("completion_tokens_details")
-                    .and_then(|d| take_first(d, &["reasoning_tokens", "reasoningTokens"]))
-            });
-            let image_tokens = take_first(u, &["image_tokens", "imageTokens"]).or_else(|| {
-                u.get("prompt_tokens_details")
-                    .and_then(|d| take_first(d, &["image_tokens", "imageTokens", "cached_tokens"]))
-            });
-            let total_tokens = take_first(u, &["total_tokens", "totalTokens", "totalTokenCount"])
-                .or_else(|| match (prompt_tokens, completion_tokens) {
-                    (Some(p), Some(c)) => Some(p + c),
-                    _ => None,
-                });
-
-            (
-                prompt_tokens,
-                completion_tokens,
-                reasoning_tokens,
-                image_tokens,
-                total_tokens,
-            )
-        } else {
-            let prompt_tokens = take_first(v, &["prompt_eval_count", "prompt_tokens"]);
-            let completion_tokens = take_first(v, &["eval_count", "completion_tokens"]);
-            let total_tokens = match (prompt_tokens, completion_tokens) {
+        });
+        let api_cost = take_first_f64(u, &["cost", "total_cost", "totalCost"]);
+        let total_tokens = take_first(u, &["total_tokens", "totalTokens", "totalTokenCount"])
+            .or_else(|| match (prompt_tokens, completion_tokens) {
                 (Some(p), Some(c)) => Some(p + c),
                 _ => None,
-            };
-            (prompt_tokens, completion_tokens, None, None, total_tokens)
+            });
+
+        (
+            prompt_tokens,
+            completion_tokens,
+            reasoning_tokens,
+            image_tokens,
+            cached_prompt_tokens,
+            cache_write_tokens,
+            web_search_requests,
+            api_cost,
+            total_tokens,
+        )
+    } else {
+        let prompt_tokens = take_first(v, &["prompt_eval_count", "prompt_tokens"]);
+        let completion_tokens = take_first(v, &["eval_count", "completion_tokens"]);
+        let total_tokens = match (prompt_tokens, completion_tokens) {
+            (Some(p), Some(c)) => Some(p + c),
+            _ => None,
         };
+        (
+            prompt_tokens,
+            completion_tokens,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            total_tokens,
+        )
+    };
 
     let finish_reason = v
         .get("choices")
@@ -582,8 +619,17 @@ pub fn usage_from_value(v: &Value) -> Option<UsageSummary> {
             prompt_tokens,
             completion_tokens,
             total_tokens,
+            cached_prompt_tokens,
+            cache_write_tokens,
             reasoning_tokens,
             image_tokens,
+            web_search_requests,
+            api_cost,
+            response_id: v
+                .get("id")
+                .or_else(|| v.get("generation_id"))
+                .and_then(|id| id.as_str())
+                .map(|id| id.to_string()),
             first_token_ms,
             tokens_per_second,
             finish_reason,

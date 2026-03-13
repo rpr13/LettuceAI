@@ -592,9 +592,19 @@ pub struct UsageSummary {
     pub completion_tokens: Option<u64>,
     pub total_tokens: Option<u64>,
     #[serde(default)]
+    pub cached_prompt_tokens: Option<u64>,
+    #[serde(default)]
+    pub cache_write_tokens: Option<u64>,
+    #[serde(default)]
     pub reasoning_tokens: Option<u64>,
     #[serde(default)]
     pub image_tokens: Option<u64>,
+    #[serde(default)]
+    pub web_search_requests: Option<u64>,
+    #[serde(default)]
+    pub api_cost: Option<f64>,
+    #[serde(default)]
+    pub response_id: Option<String>,
     #[serde(default)]
     pub first_token_ms: Option<u64>,
     #[serde(default)]

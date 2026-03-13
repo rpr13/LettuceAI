@@ -1,8 +1,8 @@
 use super::app_activity::AppActiveUsageService;
 use super::repository;
 use super::tracking::{RequestUsage, UsageFilter, UsageStats};
-use crate::models::{calculate_request_cost, get_model_pricing};
-use crate::storage_manager::db::open_db;
+use crate::chat_manager::service::apply_openrouter_cost_to_usage;
+use crate::chat_manager::types::UsageSummary;
 use crate::utils::{log_error, log_info};
 use serde::Serialize;
 use serde_json::Value;
@@ -129,10 +129,7 @@ pub async fn usage_recalculate_costs(app: AppHandle, api_key: String) -> Result<
     let mut skipped_count = 0;
     let mut error_count = 0;
 
-    // Open database connection for updates
-    let conn = open_db(&app)?;
-
-    for record in &records {
+    for mut record in records {
         // Only recalculate for OpenRouter records that have token counts
         if !record.provider_id.eq_ignore_ascii_case("openrouter") {
             skipped_count += 1;
@@ -147,54 +144,62 @@ pub async fn usage_recalculate_costs(app: AppHandle, api_key: String) -> Result<
             continue;
         }
 
-        // Fetch pricing for this model using model_name (the OpenRouter identifier like "anthropic/claude-sonnet-4.5")
-        // NOT model_id which is an internal UUID
-        match get_model_pricing(
-            app.clone(),
-            &record.provider_id,
-            &record.model_name,
-            Some(&api_key),
+        let model_name = record.model_name.clone();
+        let usage_summary = UsageSummary {
+            prompt_tokens: record.prompt_tokens,
+            completion_tokens: record.completion_tokens,
+            total_tokens: record.total_tokens,
+            cached_prompt_tokens: record
+                .metadata
+                .get("openrouter_cached_prompt_tokens")
+                .and_then(|v| v.parse::<u64>().ok()),
+            cache_write_tokens: record
+                .metadata
+                .get("openrouter_cache_write_tokens")
+                .and_then(|v| v.parse::<u64>().ok()),
+            reasoning_tokens: record.reasoning_tokens,
+            image_tokens: record.image_tokens,
+            web_search_requests: record
+                .metadata
+                .get("openrouter_web_search_requests")
+                .and_then(|v| v.parse::<u64>().ok()),
+            api_cost: record
+                .metadata
+                .get("openrouter_api_cost")
+                .and_then(|v| v.parse::<f64>().ok()),
+            response_id: record.metadata.get("openrouter_response_id").cloned(),
+            first_token_ms: None,
+            tokens_per_second: None,
+            finish_reason: record
+                .finish_reason
+                .as_ref()
+                .map(|r| r.as_str().to_string()),
+        };
+
+        apply_openrouter_cost_to_usage(
+            &app,
+            &mut record,
+            &usage_summary,
+            &model_name,
+            &api_key,
+            "usage_recalculate",
         )
-        .await
-        {
-            Ok(Some(pricing)) => {
-                if let Some(cost) =
-                    calculate_request_cost(prompt_tokens, completion_tokens, &pricing)
-                {
-                    // Update the record in database
-                    match conn.execute(
-                        "UPDATE usage_records SET prompt_cost = ?, completion_cost = ?, total_cost = ? WHERE id = ?",
-                        rusqlite::params![
-                            cost.prompt_cost,
-                            cost.completion_cost,
-                            cost.total_cost,
-                            &record.id,
-                        ],
-                    ) {
-                        Ok(_) => {
-                            updated_count += 1;
-                        }
-                        Err(e) => {
-                            log_error(
-                                &app,
-                                "usage_recalculate",
-                                format!("Failed to update record {}: {}", record.id, e),
-                            );
-                            error_count += 1;
-                        }
-                    }
-                } else {
-                    skipped_count += 1;
-                }
-            }
-            Ok(None) => {
-                skipped_count += 1;
+        .await;
+
+        if record.cost.is_none() {
+            skipped_count += 1;
+            continue;
+        }
+
+        match repository::add_usage_record(&app, record) {
+            Ok(_) => {
+                updated_count += 1;
             }
             Err(e) => {
                 log_error(
                     &app,
                     "usage_recalculate",
-                    format!("Failed to fetch pricing for {}: {}", record.model_name, e),
+                    format!("Failed to persist recalculated record: {}", e),
                 );
                 error_count += 1;
             }
