@@ -32,6 +32,9 @@ pub enum ChangeOp {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct ChangeRecord {
     pub change_id: i64,
+    pub source_device_id: String,
+    pub source_created_at: i64,
+    pub source_change_id: i64,
     pub entity_type: String,
     pub entity_id: String,
     pub op: ChangeOp,

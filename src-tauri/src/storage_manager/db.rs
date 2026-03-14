@@ -702,6 +702,9 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
           domain TEXT NOT NULL,
           entity_type TEXT NOT NULL,
           entity_id TEXT NOT NULL,
+          source_device_id TEXT NOT NULL DEFAULT '',
+          source_created_at INTEGER NOT NULL DEFAULT 0,
+          source_change_id INTEGER NOT NULL DEFAULT 0,
           op TEXT NOT NULL,
           payload_schema INTEGER NOT NULL DEFAULT 1,
           payload_hash TEXT NOT NULL,
@@ -718,6 +721,9 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
           payload BLOB NOT NULL DEFAULT X'',
           deleted INTEGER NOT NULL DEFAULT 0,
           last_change_id INTEGER NOT NULL,
+          source_device_id TEXT NOT NULL DEFAULT '',
+          source_created_at INTEGER NOT NULL DEFAULT 0,
+          source_change_id INTEGER NOT NULL DEFAULT 0,
           PRIMARY KEY (domain, entity_type, entity_id)
         );
 
@@ -813,6 +819,66 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
     if !sync_head_cols.contains("payload") {
         conn.execute(
             "ALTER TABLE sync_entity_heads ADD COLUMN payload BLOB NOT NULL DEFAULT X''",
+            [],
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    }
+    if !sync_head_cols.contains("source_device_id") {
+        conn.execute(
+            "ALTER TABLE sync_entity_heads ADD COLUMN source_device_id TEXT NOT NULL DEFAULT ''",
+            [],
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    }
+    if !sync_head_cols.contains("source_created_at") {
+        conn.execute(
+            "ALTER TABLE sync_entity_heads ADD COLUMN source_created_at INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    }
+    if !sync_head_cols.contains("source_change_id") {
+        conn.execute(
+            "ALTER TABLE sync_entity_heads ADD COLUMN source_change_id INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    }
+
+    let mut stmt_sync_changes = conn
+        .prepare("PRAGMA table_info(sync_changes)")
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let mut sync_change_cols = std::collections::HashSet::new();
+    let mut rows_sync_changes = stmt_sync_changes
+        .query([])
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    while let Some(row) = rows_sync_changes
+        .next()
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
+    {
+        let col_name: String = row
+            .get(1)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        sync_change_cols.insert(col_name);
+    }
+
+    if !sync_change_cols.contains("source_device_id") {
+        conn.execute(
+            "ALTER TABLE sync_changes ADD COLUMN source_device_id TEXT NOT NULL DEFAULT ''",
+            [],
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    }
+    if !sync_change_cols.contains("source_created_at") {
+        conn.execute(
+            "ALTER TABLE sync_changes ADD COLUMN source_created_at INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    }
+    if !sync_change_cols.contains("source_change_id") {
+        conn.execute(
+            "ALTER TABLE sync_changes ADD COLUMN source_change_id INTEGER NOT NULL DEFAULT 0",
             [],
         )
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;

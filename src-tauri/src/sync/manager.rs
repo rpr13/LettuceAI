@@ -17,7 +17,7 @@ use crate::sync::db as sync_db;
 use crate::sync::protocol::{ChangeOp, P2PMessage, SyncDomain};
 use crate::utils::{log_error, log_info, log_warn};
 
-const PROTOCOL_VERSION: u32 = 7;
+const PROTOCOL_VERSION: u32 = 8;
 
 struct PendingAssetFile {
     path: String,

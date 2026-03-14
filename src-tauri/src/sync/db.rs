@@ -37,6 +37,16 @@ struct EntityHeadRecord {
     payload: Vec<u8>,
     deleted: bool,
     _last_change_id: i64,
+    source_device_id: String,
+    source_created_at: i64,
+    source_change_id: i64,
+}
+
+#[derive(Debug, Clone)]
+struct ChangeOrigin<'a> {
+    source_device_id: &'a str,
+    source_created_at: i64,
+    source_change_id: i64,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -170,6 +180,7 @@ pub fn get_or_create_local_device_id(conn: &DbConnection) -> Result<String, Stri
 }
 
 pub fn rebuild_change_log(app: &tauri::AppHandle, conn: &mut DbConnection) -> Result<(), String> {
+    let local_device_id = get_or_create_local_device_id(conn)?;
     let current_records = collect_current_entity_records(app, conn)?;
     let current_keys = current_records
         .iter()
@@ -186,19 +197,28 @@ pub fn rebuild_change_log(app: &tauri::AppHandle, conn: &mut DbConnection) -> Re
             continue;
         }
 
-        append_change(
+        append_local_change(
             &tx,
             &record.key,
             ChangeOp::Upsert,
             record.payload_schema,
             &record.payload_hash,
             &record.payload,
+            &local_device_id,
         )?;
     }
 
     for (key, head) in heads {
         if !head.deleted && !current_keys.contains(&key) {
-            append_change(&tx, &key, ChangeOp::Delete, CHANGE_SCHEMA_VERSION, "", &[])?;
+            append_local_change(
+                &tx,
+                &key,
+                ChangeOp::Delete,
+                CHANGE_SCHEMA_VERSION,
+                "",
+                &[],
+                &local_device_id,
+            )?;
         }
     }
 
@@ -243,7 +263,7 @@ pub fn fetch_changes_since(
 ) -> Result<Vec<ChangeRecord>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, entity_type, entity_id, op, payload_schema, payload_hash, payload
+            "SELECT id, source_device_id, source_created_at, source_change_id, entity_type, entity_id, op, payload_schema, payload_hash, payload
              FROM sync_changes
              WHERE domain = ?1 AND id > ?2
              ORDER BY id ASC",
@@ -253,12 +273,15 @@ pub fn fetch_changes_since(
         .query_map(params![sync_domain_name(domain), after_change_id], |row| {
             Ok(ChangeRecord {
                 change_id: row.get(0)?,
-                entity_type: row.get(1)?,
-                entity_id: row.get(2)?,
-                op: parse_change_op(&row.get::<_, String>(3)?),
-                payload_schema: row.get(4)?,
-                payload_hash: row.get(5)?,
-                payload: row.get(6)?,
+                source_device_id: row.get(1)?,
+                source_created_at: row.get(2)?,
+                source_change_id: row.get(3)?,
+                entity_type: row.get(4)?,
+                entity_id: row.get(5)?,
+                op: parse_change_op(&row.get::<_, String>(6)?),
+                payload_schema: row.get(7)?,
+                payload_hash: row.get(8)?,
+                payload: row.get(9)?,
             })
         })
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -302,14 +325,7 @@ pub fn apply_change_batch(
             entity_type: change.entity_type.clone(),
             entity_id: change.entity_id.clone(),
         };
-        append_change(
-            &tx,
-            &key,
-            change.op,
-            change.payload_schema,
-            &change.payload_hash,
-            &change.payload,
-        )?;
+        append_remote_change(&tx, &key, change)?;
     }
 
     tx.commit()
@@ -977,7 +993,7 @@ fn add_file_asset(
 fn load_entity_heads(conn: &DbConnection) -> Result<HashMap<EntityKey, EntityHeadRecord>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT domain, entity_type, entity_id, payload_hash, payload_schema, payload, deleted, last_change_id
+            "SELECT domain, entity_type, entity_id, payload_hash, payload_schema, payload, deleted, last_change_id, source_device_id, source_created_at, source_change_id
              FROM sync_entity_heads",
         )
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -993,6 +1009,9 @@ fn load_entity_heads(conn: &DbConnection) -> Result<HashMap<EntityKey, EntityHea
                 row.get::<_, Vec<u8>>(5)?,
                 row.get::<_, i64>(6)?,
                 row.get::<_, i64>(7)?,
+                row.get::<_, String>(8)?,
+                row.get::<_, i64>(9)?,
+                row.get::<_, i64>(10)?,
             ))
         })
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -1008,6 +1027,9 @@ fn load_entity_heads(conn: &DbConnection) -> Result<HashMap<EntityKey, EntityHea
             payload,
             deleted,
             last_change_id,
+            source_device_id,
+            source_created_at,
+            source_change_id,
         ) = row.map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
         heads.insert(
             EntityKey {
@@ -1021,6 +1043,9 @@ fn load_entity_heads(conn: &DbConnection) -> Result<HashMap<EntityKey, EntityHea
                 payload,
                 deleted: deleted != 0,
                 _last_change_id: last_change_id,
+                source_device_id,
+                source_created_at,
+                source_change_id,
             },
         );
     }
@@ -1028,13 +1053,87 @@ fn load_entity_heads(conn: &DbConnection) -> Result<HashMap<EntityKey, EntityHea
     Ok(heads)
 }
 
-fn append_change(
+fn append_local_change(
     tx: &rusqlite::Transaction<'_>,
     key: &EntityKey,
     op: ChangeOp,
     payload_schema: u16,
     payload_hash: &str,
     payload: &[u8],
+    local_device_id: &str,
+) -> Result<i64, String> {
+    let origin = ChangeOrigin {
+        source_device_id: local_device_id,
+        source_created_at: crate::utils::now_millis().unwrap_or(0) as i64,
+        source_change_id: 0,
+    };
+    insert_change(
+        tx,
+        key,
+        op,
+        payload_schema,
+        payload_hash,
+        payload,
+        &origin,
+        true,
+    )
+}
+
+fn append_remote_change(
+    tx: &rusqlite::Transaction<'_>,
+    key: &EntityKey,
+    change: &ChangeRecord,
+) -> Result<Option<i64>, String> {
+    let current_head = load_head(tx, key)?;
+    if let Some(head) = &current_head {
+        match compare_change_origin(head, change) {
+            std::cmp::Ordering::Greater => return Ok(None),
+            std::cmp::Ordering::Equal => {
+                let same_deleted = head.deleted == (change.op == ChangeOp::Delete);
+                let same_payload = head.payload_hash == change.payload_hash;
+                if same_deleted && same_payload {
+                    return Ok(None);
+                }
+                return Err(crate::utils::err_msg(
+                    module_path!(),
+                    line!(),
+                    format!(
+                        "Conflicting duplicate change origin for {:?}/{}",
+                        key.domain, key.entity_id
+                    ),
+                ));
+            }
+            std::cmp::Ordering::Less => {}
+        }
+    }
+
+    let origin = ChangeOrigin {
+        source_device_id: &change.source_device_id,
+        source_created_at: change.source_created_at,
+        source_change_id: change.source_change_id,
+    };
+    insert_change(
+        tx,
+        key,
+        change.op,
+        change.payload_schema,
+        &change.payload_hash,
+        &change.payload,
+        &origin,
+        false,
+    )
+    .map(Some)
+}
+
+fn insert_change(
+    tx: &rusqlite::Transaction<'_>,
+    key: &EntityKey,
+    op: ChangeOp,
+    payload_schema: u16,
+    payload_hash: &str,
+    payload: &[u8],
+    origin: &ChangeOrigin<'_>,
+    assign_local_source_change_id: bool,
 ) -> Result<i64, String> {
     let created_at = crate::utils::now_millis().unwrap_or(0) as i64;
     tx.execute(
@@ -1053,17 +1152,40 @@ fn append_change(
     )
     .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     let change_id = tx.last_insert_rowid();
+    let source_change_id = if assign_local_source_change_id {
+        tx.execute(
+            "UPDATE sync_changes SET source_device_id = ?1, source_created_at = ?2, source_change_id = ?3 WHERE id = ?4",
+            params![origin.source_device_id, origin.source_created_at, change_id, change_id],
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        change_id
+    } else {
+        tx.execute(
+            "UPDATE sync_changes SET source_device_id = ?1, source_created_at = ?2, source_change_id = ?3 WHERE id = ?4",
+            params![
+                origin.source_device_id,
+                origin.source_created_at,
+                origin.source_change_id,
+                change_id
+            ],
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        origin.source_change_id
+    };
 
     tx.execute(
-        r#"INSERT INTO sync_entity_heads (domain, entity_type, entity_id, payload_hash, payload_schema, payload, deleted, last_change_id)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+        r#"INSERT INTO sync_entity_heads (domain, entity_type, entity_id, payload_hash, payload_schema, payload, deleted, last_change_id, source_device_id, source_created_at, source_change_id)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
            ON CONFLICT(domain, entity_type, entity_id)
            DO UPDATE SET
              payload_hash = excluded.payload_hash,
              payload_schema = excluded.payload_schema,
              payload = excluded.payload,
              deleted = excluded.deleted,
-             last_change_id = excluded.last_change_id"#,
+             last_change_id = excluded.last_change_id,
+             source_device_id = excluded.source_device_id,
+             source_created_at = excluded.source_created_at,
+             source_change_id = excluded.source_change_id"#,
         params![
             sync_domain_name(key.domain),
             key.entity_type,
@@ -1072,12 +1194,57 @@ fn append_change(
             payload_schema,
             payload,
             if op == ChangeOp::Delete { 1 } else { 0 },
-            change_id
+            change_id,
+            origin.source_device_id,
+            origin.source_created_at,
+            source_change_id
         ],
     )
     .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
     Ok(change_id)
+}
+
+fn load_head(
+    tx: &rusqlite::Transaction<'_>,
+    key: &EntityKey,
+) -> Result<Option<EntityHeadRecord>, String> {
+    let result = tx.query_row(
+        "SELECT payload_hash, payload_schema, payload, deleted, last_change_id, source_device_id, source_created_at, source_change_id
+         FROM sync_entity_heads
+         WHERE domain = ?1 AND entity_type = ?2 AND entity_id = ?3",
+        params![sync_domain_name(key.domain), key.entity_type, key.entity_id],
+        |row| {
+            Ok(EntityHeadRecord {
+                payload_hash: row.get(0)?,
+                _payload_schema: row.get(1)?,
+                payload: row.get(2)?,
+                deleted: row.get::<_, i64>(3)? != 0,
+                _last_change_id: row.get(4)?,
+                source_device_id: row.get(5)?,
+                source_created_at: row.get(6)?,
+                source_change_id: row.get(7)?,
+            })
+        },
+    );
+    match result {
+        Ok(head) => Ok(Some(head)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(crate::utils::err_to_string(module_path!(), line!(), e)),
+    }
+}
+
+fn compare_change_origin(head: &EntityHeadRecord, change: &ChangeRecord) -> std::cmp::Ordering {
+    (
+        change.source_created_at,
+        change.source_device_id.as_str(),
+        change.source_change_id,
+    )
+        .cmp(&(
+            head.source_created_at,
+            head.source_device_id.as_str(),
+            head.source_change_id,
+        ))
 }
 
 fn materialize_domain_heads(conn: &mut DbConnection, domain: SyncDomain) -> Result<(), String> {
