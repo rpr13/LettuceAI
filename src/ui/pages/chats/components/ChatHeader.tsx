@@ -49,18 +49,23 @@ export function ChatHeader({
   );
   const [memoryBusy, setMemoryBusy] = useState(false);
   const [memoryError, setMemoryError] = useState<string | null>(null);
+  const [memoryProgress, setMemoryProgress] = useState<{ current: number; total: number } | null>(
+    null,
+  );
   const isDynamic = useMemo(() => character?.memoryType === "dynamic", [character?.memoryType]);
 
   useEffect(() => {
     if (!isDynamic) {
       setMemoryBusy(false);
       setMemoryError(null);
+      setMemoryProgress(null);
       return;
     }
 
     let unlistenProcessing: (() => void) | undefined;
     let unlistenSuccess: (() => void) | undefined;
     let unlistenError: (() => void) | undefined;
+    let unlistenProgress: (() => void) | undefined;
     let disposed = false;
 
     const setupListeners = async () => {
@@ -72,9 +77,24 @@ export function ChatHeader({
         // The event payload is { sessionId }.
         if (event.payload?.sessionId && sessionId && event.payload.sessionId !== sessionId) return;
         setMemoryBusy(true);
+        if (event.payload?.total) {
+          setMemoryProgress({ current: 0, total: event.payload.total });
+        }
       });
       if (disposed) {
         unlistenProcessing();
+        return;
+      }
+
+      unlistenProgress = await listen("dynamic-memory:progress", (event: any) => {
+        if (event.payload?.sessionId && sessionId && event.payload.sessionId !== sessionId) return;
+        setMemoryBusy(true);
+        if (event.payload?.current !== undefined && event.payload?.total !== undefined) {
+          setMemoryProgress({ current: event.payload.current, total: event.payload.total });
+        }
+      });
+      if (disposed) {
+        unlistenProgress();
         return;
       }
 
@@ -82,6 +102,7 @@ export function ChatHeader({
         if (event.payload?.sessionId && sessionId && event.payload.sessionId !== sessionId) return;
         setMemoryBusy(false);
         setMemoryError(null);
+        setMemoryProgress(null);
         onSessionUpdate?.();
       });
       if (disposed) {
@@ -92,6 +113,7 @@ export function ChatHeader({
       unlistenError = await listen("dynamic-memory:error", (event: any) => {
         if (event.payload?.sessionId && sessionId && event.payload.sessionId !== sessionId) return;
         setMemoryBusy(false);
+        setMemoryProgress(null);
         setMemoryError(
           typeof event.payload === "string"
             ? event.payload
@@ -108,6 +130,7 @@ export function ChatHeader({
     return () => {
       disposed = true;
       unlistenProcessing?.();
+      unlistenProgress?.();
       unlistenSuccess?.();
       unlistenError?.();
     };
@@ -191,15 +214,22 @@ export function ChatHeader({
                         ),
                       );
                     }}
-                    className="relative flex px-[0.6em] py-[0.3em] h-10 w-10 items-center justify-center text-white/80 transition hover:text-white"
+                    className="relative flex px-[0.6em] py-[0.3em] h-10 min-w-10 items-center justify-center text-white/80 transition hover:text-white"
                     aria-label={t("chats.header.manageMemories")}
                   >
                     {isBusy ? (
-                      <Loader2
-                        size={18}
-                        strokeWidth={2.5}
-                        className="animate-spin text-emerald-400"
-                      />
+                      <div className="flex items-center gap-1.5 px-1">
+                        <Loader2
+                          size={18}
+                          strokeWidth={2.5}
+                          className="animate-spin text-emerald-400"
+                        />
+                        {memoryProgress && memoryProgress.total > 0 && (
+                          <span className="text-[10px] font-bold text-emerald-400 tabular-nums">
+                            {memoryProgress.current}/{memoryProgress.total}
+                          </span>
+                        )}
+                      </div>
                     ) : isError ? (
                       <AlertTriangle size={18} strokeWidth={2.5} className="text-red-400" />
                     ) : (

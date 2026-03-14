@@ -260,19 +260,6 @@ fn manual_window_size(settings: &Settings) -> usize {
         .unwrap_or(50) as usize
 }
 
-/// Calculate total tokens used by hot (non-cold) memories
-fn conversation_window(messages: &[StoredMessage], limit: usize) -> Vec<StoredMessage> {
-    let mut convo: Vec<StoredMessage> = messages
-        .iter()
-        .filter(|m| m.role == "user" || m.role == "assistant")
-        .cloned()
-        .collect();
-    if convo.len() > limit {
-        convo.drain(0..(convo.len() - limit));
-    }
-    convo
-}
-
 /// Extract pinned and unpinned conversation messages separately.
 /// Pinned messages are always included but don't count against the window limit.
 /// Returns (pinned_messages, recent_unpinned_messages_within_limit)
@@ -4310,8 +4297,18 @@ async fn process_dynamic_memory_cycle_with_model(
         return Ok(());
     }
 
-    let window_size = dynamic.summary_message_interval.max(1) as usize;
-    let total_messages = session.messages.len();
+    let mut window_size = dynamic.summary_message_interval.max(1) as usize;
+    // If the window size is suspiciously small and we have a large context model, 
+    // we can afford to increase it to reduce chunking artifacts and processing time.
+    let (model, _cred) = crate::chat_manager::storage::select_model(settings, character)?;
+    let context_length = resolve_context_length(session, model, settings).unwrap_or(4096);
+    if window_size < 100 && context_length >= 32768 {
+        // Automatically bump to a larger window if the user hasn't explicitly set a large one
+        // but the model can clearly handle it. 100-200 messages is usually safe and much better for coherence.
+        window_size = 200; 
+        log_info(app, "dynamic_memory", format!("auto-bumping window_size to {} due to large context_length ({})", window_size, context_length));
+    }
+
     let total_convo_at_start = match session_conversation_count(app.clone(), session.id.clone()) {
         Ok(count) => count.max(0) as usize,
         Err(err) => {
@@ -4324,15 +4321,14 @@ async fn process_dynamic_memory_cycle_with_model(
         }
     };
 
-    // Cursor-based delta summary window:
-    // - Normal cycles summarize all new conversation messages since last windowEnd.
-    // - If backlog > window_size, include the whole backlog in this run (one-time catch-up),
-    //   then future cycles continue at window_size cadence.
-    // - Forced cycles (retry/manual trigger/model override) summarize the most recent window_size
-    //   messages, even if there are no new messages.
-    let (last_window_end, cursor_rewound) = resolve_last_valid_window_end(app, session)?;
+    if total_convo_at_start == 0 {
+        log_info(app, "dynamic_memory", "empty conversation; skipping cycle");
+        return Ok(());
+    }
 
+    let (last_window_end, cursor_rewound) = resolve_last_valid_window_end(app, session)?;
     let new_convo = total_convo_at_start.saturating_sub(last_window_end);
+
     log_info(
         app,
         "dynamic_memory",
@@ -4345,7 +4341,7 @@ async fn process_dynamic_memory_cycle_with_model(
     // For retry/manual trigger/model override, skip the "enough new messages" gate.
     // Also skip if we detected a rewind; we need to rebuild the summary/memory state.
     if model_id_override.is_none() && !force && !cursor_rewound {
-        if total_convo_at_start <= last_window_end {
+        if new_convo == 0 {
             log_info(
                 app,
                 "dynamic_memory",
@@ -4369,94 +4365,39 @@ async fn process_dynamic_memory_cycle_with_model(
             );
             return Ok(());
         }
-    }
-
-    let mut window_start = if cursor_rewound {
-        0
-    } else if force || model_id_override.is_some() {
-        total_convo_at_start.saturating_sub(window_size)
-    } else {
-        last_window_end
-    };
-    let mut window_end = total_convo_at_start;
-
-    let convo_window = match fetch_conversation_messages_range(
-        app,
-        &session.id,
-        window_start,
-        window_end,
-    ) {
-        Ok(msgs) => msgs,
-        Err(err) => {
-            log_warn(
-                app,
-                "dynamic_memory",
-                format!(
-                    "failed to fetch conversation range from DB (start={} end={}): {}; falling back to in-memory window",
-                    window_start, window_end, err
-                ),
-            );
-            let fallback = conversation_window(&session.messages, window_size);
-            window_end = total_convo_at_start;
-            window_start = window_end.saturating_sub(fallback.len());
-            fallback
-        }
-    };
-
-    if convo_window.is_empty() {
-        log_warn(
+    } else if new_convo == 0 && !cursor_rewound {
+        // Even for manual runs, if there are no new messages and no rewind, skip it.
+        // This prevents the "refresh" behavior on a fully caught-up history.
+        log_info(
             app,
             "dynamic_memory",
             format!(
-                "no messages in computed window; skipping (window_start={} window_end={} total_convo_at_start={})",
-                window_start, window_end, total_convo_at_start
+                "no new messages to process even for manual run; skipping (total_convo_at_start={} last_window_end={})",
+                total_convo_at_start, last_window_end
             ),
         );
         return Ok(());
     }
 
+    let mut current_pos = if cursor_rewound {
+        0
+    } else {
+        // For forced/override runs with new_convo > 0, start from the last window end.
+        last_window_end
+    };
+
+    let total_to_process = total_convo_at_start.saturating_sub(current_pos);
+    let total_chunks = (total_to_process as f64 / window_size as f64).ceil() as usize;
+    let mut chunks_processed = 0;
+
     log_info(
         app,
         "dynamic_memory",
         format!(
-            "snapshot taken: window_start={} window_end={} window_count={} window_size={} total_convo_at_start={} total_messages={} non_convo_messages={}",
-            window_start,
-            window_end,
-            convo_window.len(),
-            window_size,
-            total_convo_at_start,
-            total_messages,
-            total_messages.saturating_sub(total_convo_at_start),
+            "starting iterative processing: current_pos={} total_convo_at_start={} total_chunks={}",
+            current_pos, total_convo_at_start, total_chunks
         ),
     );
-
-    let window_message_ids: Vec<String> = convo_window.iter().map(|m| m.id.clone()).collect();
-
-    // Apply importance decay to all hot, unpinned memories
-    let decay_rate = dynamic_decay_rate(settings);
-    let cold_threshold = dynamic_cold_threshold(settings);
-    let pinned_fixed = ensure_pinned_hot(&mut session.memory_embeddings);
-    if pinned_fixed > 0 {
-        log_info(
-            app,
-            "dynamic_memory",
-            format!("Restored {} pinned memories to hot", pinned_fixed),
-        );
-    }
-
-    let (decayed, demoted) =
-        apply_memory_decay(&mut session.memory_embeddings, decay_rate, cold_threshold);
-    if decayed > 0 || !demoted.is_empty() {
-        log_info(
-            app,
-            "dynamic_memory",
-            format!(
-                "Memory decay applied: {} memories decayed, {} demoted to cold",
-                decayed,
-                demoted.len()
-            ),
-        );
-    }
 
     let summarisation_model_id: String = match model_id_override {
         Some(id) => {
@@ -4496,6 +4437,13 @@ async fn process_dynamic_memory_cycle_with_model(
             return Err(err);
         }
     };
+
+    if force {
+        let _ = app.emit(
+            "dynamic-memory:processing",
+            json!({ "sessionId": session.id, "total": total_chunks }),
+        );
+    }
     // Set processing state
     session.memory_status = Some("processing".to_string());
     session.memory_error = None;
@@ -4507,134 +4455,204 @@ async fn process_dynamic_memory_cycle_with_model(
         );
     }
 
-    log_info(
-        app,
-        "dynamic_memory",
-        format!(
-            "running summarisation with model={} window_size={} total_convo_at_start={} window_start={} window_end={} window_ids={:?}",
-            summary_model.name, window_size, total_convo_at_start, window_start, window_end, window_message_ids
-        ),
-    );
-    let _ = app.emit(
-        "dynamic-memory:processing",
-        json!({ "sessionId": session.id }),
-    );
+    while current_pos < total_convo_at_start {
+        let chunk_end = (current_pos + window_size).min(total_convo_at_start);
+        let convo_window = match fetch_conversation_messages_range(
+            app,
+            &session.id,
+            current_pos,
+            chunk_end,
+        ) {
+            Ok(msgs) => msgs,
+            Err(err) => {
+                let err_msg = format!("failed to fetch conversation range: {}", err);
+                record_dynamic_memory_error(app, session, &err_msg, "fetch_messages");
+                let _ = app.emit(
+                    "dynamic-memory:progress",
+                    json!({
+                        "sessionId": session.id,
+                        "current": chunks_processed,
+                        "total": total_chunks,
+                        "status": "failed"
+                    }),
+                );
+                return Err(err_msg);
+            }
+        };
 
-    let summary = match summarize_messages(
-        app,
-        summary_provider,
-        summary_model,
-        &api_key,
-        &convo_window,
-        if cursor_rewound {
-            None
-        } else {
-            session.memory_summary.as_deref()
-        },
-        character,
-        session,
-        settings,
-        None,
-    )
-    .await
-    {
-        Ok(s) => s,
-        Err(err) => {
-            record_dynamic_memory_error(app, session, &err, "summarization");
-            return Err(err);
+        if convo_window.is_empty() {
+            break;
         }
-    };
-    log_info(
-        app,
-        "dynamic_memory",
-        format!(
-            "summary generated: length={} chars tokens={}",
-            summary.len(),
-            crate::tokenizer::count_tokens(app, &summary).unwrap_or(0)
-        ),
-    );
 
-    log_info(
-        app,
-        "dynamic_memory",
-        format!(
-            "summary length={} chars; invoking memory tools",
-            summary.len()
-        ),
-    );
-    let actions = match run_memory_tool_update(
-        app,
-        summary_provider,
-        summary_model,
-        &api_key,
-        session,
-        settings,
-        &summary,
-        &convo_window,
-        character,
-    )
-    .await
-    {
-        Ok(actions) => actions,
-        Err(err) => {
-            log_error(
+        let window_message_ids: Vec<String> = convo_window.iter().map(|m| m.id.clone()).collect();
+
+        // Apply importance decay to all hot, unpinned memories
+        let decay_rate = dynamic_decay_rate(settings);
+        let cold_threshold = dynamic_cold_threshold(settings);
+        let pinned_fixed = ensure_pinned_hot(&mut session.memory_embeddings);
+        if pinned_fixed > 0 {
+            log_info(
                 app,
                 "dynamic_memory",
-                format!("memory tool update failed: {}", err),
+                format!("Restored {} pinned memories to hot", pinned_fixed),
             );
-
-            let event = json!({
-                "id": Uuid::new_v4().to_string(),
-                "windowStart": window_start,
-                "windowEnd": window_end,
-                "windowMessageIds": window_message_ids,
-                "summary": summary,
-                "actions": [],
-                "error": err,
-                "status": "error",
-                "createdAt": now_millis().unwrap_or_default(),
-            });
-            session.memory_summary = Some(summary.clone());
-            session.memory_summary_token_count =
-                crate::tokenizer::count_tokens(app, &summary).unwrap_or(0);
-            session.memory_tool_events.push(event);
-            if session.memory_tool_events.len() > 50 {
-                let excess = session.memory_tool_events.len() - 50;
-                session.memory_tool_events.drain(0..excess);
-            }
-            session.memory_status = Some("failed".to_string());
-            session.memory_error = Some(format!("memory_tools: {}", err));
-            session.updated_at = now_millis()?;
-            if let Err(save_err) = save_session(app, session) {
-                record_dynamic_memory_error(app, session, &save_err, "save_session");
-                return Ok(());
-            }
-            let _ = app.emit(
-                "dynamic-memory:error",
-                json!({ "sessionId": session.id, "error": err, "stage": "memory_tools" }),
-            );
-            return Ok(());
         }
-    };
 
-    session.memory_summary = Some(summary.clone());
-    session.memory_summary_token_count = crate::tokenizer::count_tokens(app, &summary).unwrap_or(0);
-    let event = json!({
-        "id": Uuid::new_v4().to_string(),
-        "windowStart": window_start,
-        "windowEnd": window_end,
-        "windowMessageIds": window_message_ids,
-        "summary": summary,
-        "actions": actions,
-        "createdAt": now_millis().unwrap_or_default(),
-    });
-    session.memory_tool_events.push(event);
-    if session.memory_tool_events.len() > 50 {
-        let excess = session.memory_tool_events.len() - 50;
-        session.memory_tool_events.drain(0..excess);
+        let (decayed, demoted) =
+            apply_memory_decay(&mut session.memory_embeddings, decay_rate, cold_threshold);
+        if decayed > 0 || !demoted.is_empty() {
+            log_info(
+                app,
+                "dynamic_memory",
+                format!(
+                    "Memory decay applied: {} memories decayed, {} demoted to cold",
+                    decayed,
+                    demoted.len()
+                ),
+            );
+        }
+
+        log_info(
+            app,
+            "dynamic_memory",
+            format!(
+                "running chunk summarisation: model={} current_pos={} chunk_end={} window_ids={:?}",
+                summary_model.name, current_pos, chunk_end, window_message_ids
+            ),
+        );
+
+        let summary = match summarize_messages(
+            app,
+            summary_provider,
+            summary_model,
+            &api_key,
+            &convo_window,
+            if cursor_rewound && chunks_processed == 0 {
+                None
+            } else {
+                session.memory_summary.as_deref()
+            },
+            character,
+            session,
+            settings,
+            None,
+        )
+        .await
+        {
+            Ok(s) => s,
+            Err(err) => {
+                record_dynamic_memory_error(app, session, &err, "summarization");
+                let _ = app.emit(
+                    "dynamic-memory:progress",
+                    json!({
+                        "sessionId": session.id,
+                        "current": chunks_processed,
+                        "total": total_chunks,
+                        "status": "failed"
+                    }),
+                );
+                return Err(err);
+            }
+        };
+
+        let actions = match run_memory_tool_update(
+            app,
+            summary_provider,
+            summary_model,
+            &api_key,
+            session,
+            settings,
+            &summary,
+            &convo_window,
+            character,
+        )
+        .await
+        {
+            Ok(actions) => actions,
+            Err(err) => {
+                log_error(
+                    app,
+                    "dynamic_memory",
+                    format!("memory tool update failed: {}", err),
+                );
+
+                let event = json!({
+                    "id": Uuid::new_v4().to_string(),
+                    "windowStart": current_pos,
+                    "windowEnd": chunk_end,
+                    "windowMessageIds": window_message_ids,
+                    "summary": summary,
+                    "actions": [],
+                    "error": err,
+                    "status": "error",
+                    "createdAt": now_millis().unwrap_or_default(),
+                });
+                session.memory_summary = Some(summary.clone());
+                session.memory_summary_token_count =
+                    crate::tokenizer::count_tokens(app, &summary).unwrap_or(0);
+                session.memory_tool_events.push(event);
+                if session.memory_tool_events.len() > 50 {
+                    let excess = session.memory_tool_events.len() - 50;
+                    session.memory_tool_events.drain(0..excess);
+                }
+
+                record_dynamic_memory_error(app, session, &err, "memory_tools");
+                let _ = app.emit(
+                    "dynamic-memory:progress",
+                    json!({
+                        "sessionId": session.id,
+                        "current": chunks_processed,
+                        "total": total_chunks,
+                        "status": "failed"
+                    }),
+                );
+                return Err(err);
+            }
+        };
+
+        session.memory_summary = Some(summary.clone());
+        session.memory_summary_token_count =
+            crate::tokenizer::count_tokens(app, &summary).unwrap_or(0);
+        let event = json!({
+            "id": Uuid::new_v4().to_string(),
+            "windowStart": current_pos,
+            "windowEnd": chunk_end,
+            "windowMessageIds": window_message_ids,
+            "summary": summary,
+            "actions": actions,
+            "createdAt": now_millis().unwrap_or_default(),
+        });
+        session.memory_tool_events.push(event);
+        if session.memory_tool_events.len() > 50 {
+            let excess = session.memory_tool_events.len() - 50;
+            session.memory_tool_events.drain(0..excess);
+        }
+
+        chunks_processed += 1;
+        current_pos = chunk_end;
+
+        let _ = app.emit(
+            "dynamic-memory:progress",
+            json!({
+                "sessionId": session.id,
+                "current": chunks_processed,
+                "total": total_chunks,
+                "status": "processing"
+            }),
+        );
+
+        // Save session after every successful chunk to ensure progress isn't lost
+        if let Err(err) = save_session(app, session) {
+            record_dynamic_memory_error(app, session, &err, "save_session");
+            return Err(err);
+        }
+
+        if current_pos >= total_convo_at_start {
+            break;
+        }
     }
 
-    session.memory_status = Some("idle".to_string());
+    session.memory_status = Some("ready".to_string());
     session.memory_error = None;
     session.updated_at = now_millis()?;
     if let Err(err) = save_session(app, session) {
@@ -4660,16 +4678,20 @@ async fn process_dynamic_memory_cycle_with_model(
         }
     }
 
-    let _ = app.emit("dynamic-memory:success", json!({ "sessionId": session.id }));
+    let _ = app.emit(
+        "dynamic-memory:success",
+        json!({ "sessionId": session.id }),
+    );
     log_info(
         app,
         "dynamic_memory",
         format!(
-            "dynamic memory cycle complete: events={}, memories={}, embeddings={}, windowEnd={}",
+            "dynamic memory cycle complete: chunks={}, events={}, memories={}, embeddings={}, windowEnd={}",
+            chunks_processed,
             session.memory_tool_events.len(),
             session.memories.len(),
             session.memory_embeddings.len(),
-            window_end
+            current_pos
         ),
     );
 
@@ -5214,16 +5236,19 @@ async fn run_memory_tool_update(
             .replace("{{current_memory_tokens}}", &current_tokens.to_string())
             .replace("{{hot_token_budget}}", &token_budget.to_string());
 
+    // To improve llama.cpp caching, we keep the system prompt as static as possible.
     crate::chat_manager::messages::push_system_message(
         &mut messages_for_api,
         &system_role,
         Some(rendered),
     );
     let memory_lines = format_memories_with_ids(session);
+
+    // Volatile inputs (summary and transcript) in a separate user message.
     messages_for_api.push(json!({
         "role": "user",
         "content": format!(
-            "Conversation transcript summary:\n{}\n\nRecent transcript lines:\n{}\n\nCurrent memories (with IDs):\n{}",
+            "## Inputs for this update cycle:\n\n### 1. Conversation transcript summary:\n{}\n\n### 2. Recent transcript lines:\n{}\n\n### 3. Current memories (with IDs):\n{}",
             summary,
             convo_window.iter().map(|m| format!("{}: {}", m.role, m.content)).collect::<Vec<_>>().join("\n"),
             if memory_lines.is_empty() { "none".to_string() } else { memory_lines.join("\n") }
@@ -6145,7 +6170,7 @@ async fn summarize_messages(
     let mut messages_for_api = Vec::new();
     let system_role = super::request_builder::system_role_for(provider_cred);
 
-    let summary_template = prompts::get_template(app, APP_DYNAMIC_SUMMARY_TEMPLATE_ID)
+    let summary_template = crate::chat_manager::prompts::get_template(app, APP_DYNAMIC_SUMMARY_TEMPLATE_ID)
         .ok()
         .flatten()
         .map(|t| t.content)
@@ -6153,7 +6178,7 @@ async fn summarize_messages(
             "Summarize the recent conversation transcript into a concise paragraph capturing durable facts and decisions. Avoid adding new information.".to_string()
         });
 
-    let mut rendered = prompt_engine::render_with_context(
+    let rendered = prompt_engine::render_with_context(
         app,
         &summary_template,
         character,
@@ -6161,15 +6186,29 @@ async fn summarize_messages(
         session,
         settings,
     );
-    let prev_text = prior_summary
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or("No previous summary provided.");
-    rendered = rendered.replace("{{prev_summary}}", prev_text);
+
+    // To improve llama.cpp caching, we move the volatile {{prev_summary}} 
+    // out of the static system prompt if it was there.
+    // We'll strip it from the system prompt and put it in the user prompt below.
+    let static_system = rendered.replace("{{prev_summary}}", "(contained in the following context message)");
+
     crate::chat_manager::messages::push_system_message(
         &mut messages_for_api,
         &system_role,
-        Some(rendered),
+        Some(static_system),
     );
+
+    let prev_text = prior_summary
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or("No previous summary provided.");
+
+    // Volatile context message (prev_summary changes every chunk)
+    // We add a strong reminder here to ensure the model doesn't just replace the summary.
+    messages_for_api.push(json!({
+        "role": "user",
+        "content": format!("## Previous Cumulative Summary\n{}\n\n## Instructions\nMerge the following new transcript window into this summary. CRITICAL: Do not lose any facts from the previous summary; it represents the entire history so far. Your output must be cumulative.", prev_text)
+    }));
+
     for msg in convo_window {
         messages_for_api.push(json!({
             "role": msg.role,

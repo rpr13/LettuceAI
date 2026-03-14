@@ -54,7 +54,7 @@ pub fn default_dynamic_summary_entries() -> Vec<SystemPromptEntry> {
             name: "Task".to_string(),
             role: PromptEntryRole::System,
             content:
-                "You maintain a single cumulative summary for a conversation transcript. Treat this as an information-compression task, not a chat response.".to_string(),
+                "You maintain a single cumulative summary for a conversation transcript. This is a lossless information-compression task. Your primary goal is to carry forward all durable facts from the previous summary while integrating new information.".to_string(),
             enabled: true,
             injection_position: PromptEntryPosition::Relative,
             injection_depth: 0,
@@ -78,7 +78,7 @@ pub fn default_dynamic_summary_entries() -> Vec<SystemPromptEntry> {
             id: "summary_job".to_string(),
             name: "Your Job".to_string(),
             role: PromptEntryRole::System,
-            content: "Your job:\n1. Merge the new transcript window into the existing summary.\n2. Preserve durable facts unless the newer transcript clearly contradicts them.\n3. Keep chronology and cause/effect relationships clear.\n4. Compress repetition, filler, and low-value wording.\n5. Replace outdated facts with newer explicit facts when the transcript corrects or revises them.\n6. DO NOT infer hidden motives, emotional states, or off-screen events.".to_string(),
+            content: "Your job:\n1. Integrate the new transcript window into the existing summary WITHOUT discarding any durable facts from the previous summary.\n2. Preserve all facts (character names, locations, plot developments, decisions) unless the newer transcript clearly contradicts or updates them.\n3. Keep chronology and cause/effect relationships clear.\n4. Condense phrasing for brevity but never at the expense of factual data.\n5. Replace outdated facts ONLY when the transcript corrects or revises them.\n6. DO NOT infer hidden motives, emotional states, or off-screen events.".to_string(),
             enabled: true,
             injection_position: PromptEntryPosition::Relative,
             injection_depth: 0,
