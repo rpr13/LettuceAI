@@ -130,6 +130,8 @@ export function useChatStreamingController({
       const optimisticMessages = [...state.messages, userPlaceholder, assistantPlaceholder];
 
       messagesRef.current = optimisticMessages;
+      // The draft is cleared in the state via BATCH/CLEAR_PENDING_ATTACHMENTS,
+      // which triggers the useEffect in useChatController to remove from localStorage.
 
       dispatch({
         type: "BATCH",

@@ -238,7 +238,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       };
 
     case "CLEAR_PENDING_ATTACHMENTS":
-      return { ...state, pendingAttachments: [] };
+      return { ...state, pendingAttachments: [], draft: "" };
 
     case "UPDATE_MESSAGE_REASONING":
       const existingReasoning = state.streamingReasoning[action.payload.messageId] || "";
