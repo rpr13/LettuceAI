@@ -130,8 +130,8 @@ export function useChatStreamingController({
       const optimisticMessages = [...state.messages, userPlaceholder, assistantPlaceholder];
 
       messagesRef.current = optimisticMessages;
-      // The draft is cleared in the state via BATCH/CLEAR_PENDING_ATTACHMENTS,
-      // which triggers the useEffect in useChatController to remove from localStorage.
+      // The attachments are cleared in the state via BATCH/CLEAR_PENDING_ATTACHMENTS.
+      // The draft will be cleared only after the send succeeds.
 
       dispatch({
         type: "BATCH",
@@ -219,6 +219,9 @@ export function useChatStreamingController({
           requestId,
           attachments: messageAttachments.length > 0 ? messageAttachments : undefined,
         });
+
+        dispatch({ type: "CLEAR_DRAFT" });
+        applyLiveChatAction(currentSessionId, state, { type: "CLEAR_DRAFT" });
 
         const replaced = messagesRef.current.map((msg) => {
           if (msg.id === userPlaceholder.id) return result.userMessage;

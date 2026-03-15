@@ -248,7 +248,7 @@ export function useChatSessionController({
               { type: "SET_PERSONA", payload: selectedPersona },
               { type: "SET_SESSION", payload: normalizedSession },
               { type: "SET_MESSAGES", payload: orderedMessages },
-              ...(savedDraft ? [{ type: "SET_DRAFT" as const, payload: savedDraft }] : []),
+              { type: "SET_DRAFT", payload: savedDraft || "" },
             ],
           });
         }
