@@ -37,6 +37,7 @@ import {
 
 const MESSAGES_PAGE_SIZE = 50;
 const STICKY_BOTTOM_THRESHOLD_PX = 80;
+const MOBILE_KEYBOARD_THRESHOLD_PX = 120;
 
 interface MessageActionState {
   message: GroupMessage;
@@ -83,6 +84,7 @@ export function GroupChatPage() {
   const [shouldTriggerFileInput, setShouldTriggerFileInput] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<ImageAttachment[]>([]);
   const [supportsImageInput, setSupportsImageInput] = useState(false);
+  const [keyboardInset, setKeyboardInset] = useState(0);
   const helpMeReplyRequestIdRef = useRef<string | null>(null);
   const helpMeReplyUnlistenRef = useRef<UnlistenFn | null>(null);
   const helpMeReplyLoadingTimeoutRef = useRef<number | null>(null);
@@ -266,6 +268,62 @@ export function GroupChatPage() {
       });
     }
   }, []);
+
+  useEffect(() => {
+    const platform = getPlatform();
+    const isMobile = platform === "android" || platform === "ios";
+    if (!isMobile) {
+      setKeyboardInset(0);
+      return;
+    }
+
+    const visualViewport = window.visualViewport;
+    let focusTimer: number | null = null;
+
+    const updateKeyboardInset = () => {
+      const baseHeight = window.innerHeight;
+      const viewportHeight = visualViewport?.height ?? baseHeight;
+      const viewportOffsetTop = visualViewport?.offsetTop ?? 0;
+      const rawInset = Math.max(0, baseHeight - viewportHeight - viewportOffsetTop);
+      const nextInset = rawInset > MOBILE_KEYBOARD_THRESHOLD_PX ? Math.round(rawInset) : 0;
+
+      setKeyboardInset((prev) => (prev === nextInset ? prev : nextInset));
+
+      window.requestAnimationFrame(() => {
+        updateIsAtBottom();
+        const activeElement = document.activeElement;
+        if (activeElement instanceof HTMLTextAreaElement && isAtBottomRef.current) {
+          scrollToBottom("auto");
+        }
+      });
+    };
+
+    const handleFocusChange = () => {
+      updateKeyboardInset();
+      if (focusTimer !== null) {
+        window.clearTimeout(focusTimer);
+      }
+      focusTimer = window.setTimeout(updateKeyboardInset, 180);
+    };
+
+    updateKeyboardInset();
+    visualViewport?.addEventListener("resize", updateKeyboardInset);
+    visualViewport?.addEventListener("scroll", updateKeyboardInset);
+    window.addEventListener("resize", updateKeyboardInset);
+    document.addEventListener("focusin", handleFocusChange);
+    document.addEventListener("focusout", handleFocusChange);
+
+    return () => {
+      if (focusTimer !== null) {
+        window.clearTimeout(focusTimer);
+      }
+      visualViewport?.removeEventListener("resize", updateKeyboardInset);
+      visualViewport?.removeEventListener("scroll", updateKeyboardInset);
+      window.removeEventListener("resize", updateKeyboardInset);
+      document.removeEventListener("focusin", handleFocusChange);
+      document.removeEventListener("focusout", handleFocusChange);
+    };
+  }, [scrollToBottom, updateIsAtBottom]);
 
   useLayoutEffect(() => {
     const container = scrollContainerRef.current;
@@ -800,7 +858,9 @@ export function GroupChatPage() {
 
     const hasPinnedAfter = messages.slice(messageIndex + 1).some((message) => message.isPinned);
     if (hasPinnedAfter) {
-      setActionError("Cannot rewind: there are pinned messages after this point. Unpin them first.");
+      setActionError(
+        "Cannot rewind: there are pinned messages after this point. Unpin them first.",
+      );
       return;
     }
 
@@ -1121,6 +1181,9 @@ export function GroupChatPage() {
     );
   }
 
+  const footerBottomOffset = `calc(env(safe-area-inset-bottom) + ${keyboardInset}px)`;
+  const scrollButtonBottomOffset = `calc(env(safe-area-inset-bottom) + ${keyboardInset}px + 88px)`;
+
   return (
     <div
       className={cn(
@@ -1229,11 +1292,11 @@ export function GroupChatPage() {
               transition={{ duration: 0.18, ease: "easeOut" }}
               className={cn(
                 "fixed right-3 z-30 flex h-11 w-11 items-center justify-center",
-                "bottom-[calc(env(safe-area-inset-bottom)+88px)]",
                 "border border-fg/15 bg-surface-el/40 text-fg/80 shadow-lg backdrop-blur-sm",
                 "hover:bg-surface-el/55 active:scale-95",
                 radius.full,
               )}
+              style={{ bottom: scrollButtonBottomOffset }}
             >
               <ChevronDown size={18} />
             </motion.button>
@@ -1241,10 +1304,7 @@ export function GroupChatPage() {
         </AnimatePresence>
 
         {/* Footer */}
-        <div
-          className="relative z-20 shrink-0"
-          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-        >
+        <div className="relative z-20 shrink-0" style={{ paddingBottom: footerBottomOffset }}>
           <GroupChatFooter
             draft={draft}
             setDraft={setDraft}
