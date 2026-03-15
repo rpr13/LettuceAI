@@ -17,6 +17,7 @@ import {
   type Settings,
   type Persona,
   type StoredMessage,
+  type Scene,
   type ProviderCredential,
   type Model,
   type AppState,
@@ -89,6 +90,10 @@ function now() {
   return Date.now();
 }
 
+type SessionMemoryEmbedding = NonNullable<Session["memoryEmbeddings"]>[number];
+type SessionMemoryToolEvent = NonNullable<Session["memoryToolEvents"]>[number];
+type SessionMemoryToolAction = NonNullable<SessionMemoryToolEvent["actions"]>[number];
+
 function uuidv4(): string {
   const bytes = new Uint8Array(16);
   (globalThis.crypto || ({} as any)).getRandomValues?.(bytes);
@@ -105,6 +110,234 @@ function uuidv4(): string {
     hex.slice(8, 10).join("") +
     "-" +
     hex.slice(10, 16).join("")
+  );
+}
+
+function cloneSessionMemoryEmbedding(memory: SessionMemoryEmbedding): SessionMemoryEmbedding {
+  return {
+    ...memory,
+    embedding: [...memory.embedding],
+  };
+}
+
+function cloneSessionMemoryToolEvent(event: SessionMemoryToolEvent): SessionMemoryToolEvent {
+  return {
+    ...event,
+    windowMessageIds: event.windowMessageIds ? [...event.windowMessageIds] : undefined,
+    actions: event.actions.map((action) => ({
+      ...action,
+      updatedMemories: action.updatedMemories ? [...action.updatedMemories] : undefined,
+    })),
+  };
+}
+
+function countConversationMessagesUpTo(messages: StoredMessage[], messageIndex: number): number {
+  return messages
+    .slice(0, messageIndex + 1)
+    .filter((message) => message.role === "user" || message.role === "assistant").length;
+}
+
+function resolveMemoryIdFromAction(
+  action: SessionMemoryToolAction,
+  activeMemories: Map<string, SessionMemoryEmbedding>,
+): string | null {
+  const args = (action.arguments ?? {}) as Record<string, unknown>;
+  const explicitMemoryId =
+    "memoryId" in action && typeof (action as { memoryId?: unknown }).memoryId === "string"
+      ? String((action as { memoryId?: unknown }).memoryId)
+      : null;
+  if (explicitMemoryId) {
+    return explicitMemoryId;
+  }
+
+  const idArg = typeof args.id === "string" ? args.id.trim() : "";
+  if (idArg) {
+    return idArg;
+  }
+
+  const textArg = typeof args.text === "string" ? args.text : "";
+  if (/^\d{6}$/.test(textArg) && activeMemories.has(textArg)) {
+    return textArg;
+  }
+
+  for (const [memoryId, memory] of activeMemories) {
+    if (memory.text === textArg) {
+      return memoryId;
+    }
+  }
+
+  return null;
+}
+
+function buildMemoryFromCreateAction(
+  action: SessionMemoryToolAction,
+  sourceMemoryById: Map<string, SessionMemoryEmbedding>,
+): SessionMemoryEmbedding | null {
+  const args = (action.arguments ?? {}) as Record<string, unknown>;
+  const memoryId = resolveMemoryIdFromAction(action, sourceMemoryById);
+  const text = typeof args.text === "string" ? args.text : "";
+  if (!memoryId || !text) {
+    return null;
+  }
+
+  const sourceMemory = sourceMemoryById.get(memoryId);
+  if (sourceMemory) {
+    return {
+      ...cloneSessionMemoryEmbedding(sourceMemory),
+      text,
+      isCold: false,
+      importanceScore: sourceMemory.importanceScore ?? 1,
+      lastAccessedAt: sourceMemory.lastAccessedAt ?? sourceMemory.createdAt,
+      isPinned:
+        typeof args.important === "boolean" ? Boolean(args.important) : sourceMemory.isPinned,
+      category: typeof args.category === "string" ? args.category : (sourceMemory.category ?? null),
+    };
+  }
+
+  const createdAt = typeof action.timestamp === "number" ? action.timestamp : 0;
+  return {
+    id: memoryId,
+    text,
+    embedding: [],
+    createdAt,
+    tokenCount: 0,
+    isCold: false,
+    importanceScore: 1,
+    lastAccessedAt: createdAt,
+    isPinned: Boolean(args.important),
+    category: typeof args.category === "string" ? args.category : null,
+  };
+}
+
+function resolveBranchedDynamicMemoryState(
+  sourceSession: Session,
+  branchMessageIndex: number,
+): Pick<
+  Session,
+  | "memoryEmbeddings"
+  | "memorySummary"
+  | "memorySummaryTokenCount"
+  | "memoryToolEvents"
+  | "memoryStatus"
+  | "memoryError"
+> {
+  const sourceEvents = sourceSession.memoryToolEvents ?? [];
+  if (sourceEvents.length === 0) {
+    return {
+      memoryEmbeddings: (sourceSession.memoryEmbeddings ?? []).map(cloneSessionMemoryEmbedding),
+      memorySummary: sourceSession.memorySummary ?? "",
+      memorySummaryTokenCount: sourceSession.memorySummaryTokenCount ?? 0,
+      memoryToolEvents: [],
+      memoryStatus: sourceSession.memoryStatus ?? "idle",
+      memoryError: sourceSession.memoryError,
+    };
+  }
+
+  const branchConversationCount = countConversationMessagesUpTo(
+    sourceSession.messages,
+    branchMessageIndex,
+  );
+  const keptEvents = sourceEvents
+    .filter((event) => (event.windowEnd ?? 0) <= branchConversationCount)
+    .map(cloneSessionMemoryToolEvent);
+
+  if (keptEvents.length === 0) {
+    return {
+      memoryEmbeddings: [],
+      memorySummary: "",
+      memorySummaryTokenCount: 0,
+      memoryToolEvents: [],
+      memoryStatus: "idle",
+      memoryError: undefined,
+    };
+  }
+
+  const sourceMemoryById = new Map(
+    (sourceSession.memoryEmbeddings ?? []).map((memory) => [memory.id, memory]),
+  );
+  const activeMemories = new Map<string, SessionMemoryEmbedding>();
+
+  for (const event of keptEvents) {
+    for (const action of event.actions ?? []) {
+      if (action.name === "create_memory") {
+        const memory = buildMemoryFromCreateAction(action, sourceMemoryById);
+        if (memory) {
+          activeMemories.set(memory.id, memory);
+        }
+        continue;
+      }
+
+      if (action.name === "delete_memory") {
+        const memoryId = resolveMemoryIdFromAction(action, activeMemories);
+        if (!memoryId) {
+          continue;
+        }
+
+        const args = (action.arguments ?? {}) as Record<string, unknown>;
+        const confidence = typeof args.confidence === "number" ? args.confidence : undefined;
+        const shouldSoftDelete =
+          "softDelete" in action
+            ? Boolean((action as { softDelete?: unknown }).softDelete)
+            : confidence !== undefined && confidence < 0.7;
+
+        if (shouldSoftDelete) {
+          const memory = activeMemories.get(memoryId);
+          if (memory) {
+            activeMemories.set(memoryId, { ...memory, isCold: true });
+          }
+        } else {
+          activeMemories.delete(memoryId);
+        }
+        continue;
+      }
+
+      if (action.name === "pin_memory" || action.name === "unpin_memory") {
+        const memoryId = resolveMemoryIdFromAction(action, activeMemories);
+        if (!memoryId) {
+          continue;
+        }
+
+        const memory = activeMemories.get(memoryId);
+        if (!memory) {
+          continue;
+        }
+
+        activeMemories.set(memoryId, {
+          ...memory,
+          isPinned: action.name === "pin_memory",
+        });
+      }
+    }
+  }
+
+  const lastKeptEvent = keptEvents[keptEvents.length - 1];
+  const memorySummary = lastKeptEvent.summary ?? "";
+  const memorySummaryTokenCount =
+    memorySummary === (sourceSession.memorySummary ?? "")
+      ? (sourceSession.memorySummaryTokenCount ?? 0)
+      : 0;
+
+  return {
+    memoryEmbeddings: Array.from(activeMemories.values()),
+    memorySummary,
+    memorySummaryTokenCount,
+    memoryToolEvents: keptEvents,
+    memoryStatus: lastKeptEvent.error ? "failed" : "idle",
+    memoryError: lastKeptEvent.error,
+  };
+}
+
+function hasDynamicMemoryState(
+  state: Pick<
+    Session,
+    "memoryEmbeddings" | "memorySummary" | "memorySummaryTokenCount" | "memoryToolEvents"
+  >,
+): boolean {
+  return (
+    (state.memoryEmbeddings?.length ?? 0) > 0 ||
+    (state.memoryToolEvents?.length ?? 0) > 0 ||
+    (state.memorySummary?.trim().length ?? 0) > 0 ||
+    (state.memorySummaryTokenCount ?? 0) > 0
   );
 }
 
@@ -679,19 +912,7 @@ export async function createBranchedSession(
         selectedVariantId: newSelectedVariantId,
       };
     });
-
-  const branchedMemoryEmbeddings = (sourceSession.memoryEmbeddings ?? []).map((memory) => ({
-    ...memory,
-    embedding: [...memory.embedding],
-  }));
-  const branchedMemoryToolEvents = (sourceSession.memoryToolEvents ?? []).map((event) => ({
-    ...event,
-    windowMessageIds: event.windowMessageIds ? [...event.windowMessageIds] : undefined,
-    actions: event.actions.map((action) => ({
-      ...action,
-      updatedMemories: action.updatedMemories ? [...action.updatedMemories] : undefined,
-    })),
-  }));
+  const branchedDynamicMemoryState = resolveBranchedDynamicMemoryState(sourceSession, messageIndex);
 
   const s: Session = {
     id,
@@ -702,16 +923,16 @@ export async function createBranchedSession(
     personaId: sourceSession.personaId,
     personaDisabled: sourceSession.personaDisabled ?? false,
     memories: [...sourceSession.memories],
-    memoryEmbeddings: branchedMemoryEmbeddings,
-    memorySummary: sourceSession.memorySummary ?? "",
-    memorySummaryTokenCount: sourceSession.memorySummaryTokenCount ?? 0,
-    memoryToolEvents: branchedMemoryToolEvents,
+    memoryEmbeddings: branchedDynamicMemoryState.memoryEmbeddings,
+    memorySummary: branchedDynamicMemoryState.memorySummary,
+    memorySummaryTokenCount: branchedDynamicMemoryState.memorySummaryTokenCount,
+    memoryToolEvents: branchedDynamicMemoryState.memoryToolEvents,
     messages: branchedMessages,
     archived: false,
     createdAt: timestamp,
     updatedAt: timestamp,
-    memoryStatus: sourceSession.memoryStatus || "idle",
-    memoryError: sourceSession.memoryError,
+    memoryStatus: branchedDynamicMemoryState.memoryStatus,
+    memoryError: branchedDynamicMemoryState.memoryError,
   };
 
   await saveSession(s);
@@ -756,6 +977,7 @@ export async function createBranchedSessionToCharacter(
         selectedVariantId: newSelectedVariantId,
       };
     });
+  const branchedDynamicMemoryState = resolveBranchedDynamicMemoryState(sourceSession, messageIndex);
 
   const s: Session = {
     id,
@@ -765,17 +987,99 @@ export async function createBranchedSessionToCharacter(
     promptTemplateId: targetCharacter?.promptTemplateId ?? null,
     personaId: sourceSession.personaId,
     personaDisabled: sourceSession.personaDisabled ?? false,
-    memories: [],
-    memorySummaryTokenCount: 0,
+    memories: [...sourceSession.memories],
+    memoryEmbeddings: branchedDynamicMemoryState.memoryEmbeddings,
+    memorySummary: branchedDynamicMemoryState.memorySummary,
+    memorySummaryTokenCount: branchedDynamicMemoryState.memorySummaryTokenCount,
+    memoryToolEvents: branchedDynamicMemoryState.memoryToolEvents,
     messages: branchedMessages,
     archived: false,
     createdAt: timestamp,
     updatedAt: timestamp,
-    memoryStatus: "idle",
+    memoryStatus: branchedDynamicMemoryState.memoryStatus,
+    memoryError: branchedDynamicMemoryState.memoryError,
   };
 
   await saveSession(s);
   return s;
+}
+
+export async function createBranchedGroupSession(
+  sourceSession: Session,
+  branchAtMessageId: string,
+  options: {
+    name: string;
+    characterIds: string[];
+    ownerCharacterId: string;
+    personaId?: string | null;
+    startingScene?: Scene | null;
+    backgroundImagePath?: string | null;
+  },
+): Promise<GroupSession> {
+  const messageIndex = sourceSession.messages.findIndex((m) => m.id === branchAtMessageId);
+  if (messageIndex === -1) {
+    throw new Error("Message not found in session");
+  }
+
+  const group = await storageBridge.groupCreate(
+    options.name,
+    options.characterIds,
+    options.personaId ?? null,
+    "roleplay",
+    options.startingScene ?? null,
+    options.backgroundImagePath ?? null,
+  );
+  const groupSession = GroupSessionSchema.parse(await storageBridge.groupCreateSession(group.id));
+
+  const messagesToCopy = sourceSession.messages.slice(0, messageIndex + 1);
+  for (const message of messagesToCopy) {
+    if (message.role !== "user" && message.role !== "assistant") continue;
+
+    await storageBridge.groupMessageUpsert(groupSession.id, {
+      id: globalThis.crypto?.randomUUID?.() ?? uuidv4(),
+      sessionId: groupSession.id,
+      role: message.role,
+      content: message.content,
+      speakerCharacterId: message.role === "assistant" ? options.ownerCharacterId : null,
+      turnNumber: 0,
+      createdAt: message.createdAt,
+      usage: message.usage ?? null,
+      selectedVariantId: null,
+      isPinned: Boolean(message.isPinned),
+      attachments: message.attachments ?? [],
+      reasoning: message.reasoning ?? null,
+      selectionReasoning: null,
+    });
+  }
+
+  const branchedDynamicMemoryState = resolveBranchedDynamicMemoryState(sourceSession, messageIndex);
+  const shouldUseDynamicMemory = hasDynamicMemoryState(branchedDynamicMemoryState);
+
+  if (shouldUseDynamicMemory) {
+    await storageBridge.groupSessionUpdateMemoryState(
+      groupSession.id,
+      sourceSession.memories,
+      (branchedDynamicMemoryState.memoryEmbeddings ?? []).map((memory) => ({
+        ...memory,
+        accessCount: 0,
+      })),
+      branchedDynamicMemoryState.memorySummary ?? "",
+      branchedDynamicMemoryState.memorySummaryTokenCount ?? 0,
+      branchedDynamicMemoryState.memoryToolEvents ?? [],
+      branchedDynamicMemoryState.memoryStatus ?? "idle",
+      branchedDynamicMemoryState.memoryError ?? null,
+    );
+    await storageBridge.groupSessionUpdateMemoryType(groupSession.id, "dynamic");
+  } else {
+    await storageBridge.groupSessionUpdateManualMemories(groupSession.id, sourceSession.memories);
+  }
+
+  const updatedGroupSession = await storageBridge.groupSessionGet(groupSession.id);
+  if (!updatedGroupSession) {
+    throw new Error("Failed to load branched group session.");
+  }
+  broadcastSessionUpdated();
+  return GroupSessionSchema.parse(updatedGroupSession);
 }
 
 export async function toggleMessagePin(

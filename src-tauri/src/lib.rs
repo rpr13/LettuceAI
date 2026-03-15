@@ -515,6 +515,7 @@ pub fn run() {
             storage_manager::group_sessions::group_message_select_variant,
             storage_manager::group_sessions::group_message_count,
             storage_manager::group_sessions::group_session_update_memories,
+            storage_manager::group_sessions::group_session_update_memory_state,
             storage_manager::group_sessions::group_session_update_manual_memories,
             storage_manager::group_sessions::group_session_add_memory,
             storage_manager::group_sessions::group_session_remove_memory,

@@ -38,6 +38,7 @@ import {
 } from "../../../core/storage/audioProviders";
 import { useChatLayoutContext } from "./ChatLayout";
 import {
+  createBranchedGroupSession,
   generateUserReply,
   getSession,
   getSessionMeta,
@@ -48,7 +49,6 @@ import {
   SETTINGS_UPDATED_EVENT,
   SESSION_UPDATED_EVENT,
 } from "../../../core/storage";
-import { storageBridge } from "../../../core/storage/files";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { playAccessibilitySound } from "../../../core/utils/accessibilityAudio";
 import { replacePlaceholders } from "../../../core/utils/placeholders";
@@ -300,8 +300,7 @@ export function ChatConversationPage() {
         throw new Error("Failed to load source session.");
       }
 
-      const messageIndex = sourceSession.messages.findIndex((msg) => msg.id === messageToBranch.id);
-      if (messageIndex === -1) {
+      if (!sourceSession.messages.some((msg) => msg.id === messageToBranch.id)) {
         throw new Error("Selected message was not found in the session.");
       }
 
@@ -319,36 +318,14 @@ export function ChatConversationPage() {
           }
         : null;
 
-      const group = await storageBridge.groupCreate(
-        `${character.name} Branch`,
-        selectedCharacterIds,
-        sourceSession.personaDisabled ? null : (sourceSession.personaId ?? null),
-        "roleplay",
+      const groupSession = await createBranchedGroupSession(sourceSession, messageToBranch.id, {
+        name: `${character.name} Branch`,
+        characterIds: selectedCharacterIds,
+        ownerCharacterId: character.id,
+        personaId: sourceSession.personaDisabled ? null : (sourceSession.personaId ?? null),
         startingScene,
-        character.backgroundImagePath ?? null,
-      );
-      const groupSession = await storageBridge.groupCreateSession(group.id);
-
-      const messagesToCopy = sourceSession.messages.slice(0, messageIndex + 1);
-      for (const message of messagesToCopy) {
-        if (message.role !== "user" && message.role !== "assistant") continue;
-
-        await storageBridge.groupMessageUpsert(groupSession.id, {
-          id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
-          sessionId: groupSession.id,
-          role: message.role,
-          content: message.content,
-          speakerCharacterId: message.role === "assistant" ? character.id : null,
-          turnNumber: 0,
-          createdAt: Date.now(),
-          usage: message.usage ?? null,
-          selectedVariantId: null,
-          isPinned: Boolean(message.isPinned),
-          attachments: message.attachments ?? [],
-          reasoning: message.reasoning ?? null,
-          selectionReasoning: null,
-        });
-      }
+        backgroundImagePath: character.backgroundImagePath ?? null,
+      });
 
       setShowGroupCharacterSelector(false);
       setMessageToBranch(null);

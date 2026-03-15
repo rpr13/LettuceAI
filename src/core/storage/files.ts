@@ -206,7 +206,9 @@ export const storageBridge = {
       disableCharacterLorebooks,
     }).then((s) => JSON.parse(s)),
   groupSessionLorebooksList: (sessionId: string) =>
-    invoke<string>("group_session_lorebooks_list", { sessionId }).then((s) => JSON.parse(s) as any[]),
+    invoke<string>("group_session_lorebooks_list", { sessionId }).then(
+      (s) => JSON.parse(s) as any[],
+    ),
   groupSessionLorebooksSet: (sessionId: string, lorebookIds: string[]) =>
     invoke<string>("group_session_lorebooks_set", {
       sessionId,
@@ -527,22 +529,35 @@ export const storageBridge = {
     invoke("group_update_name", { id, name }) as Promise<void>,
   groupUpdatePersona: (id: string, personaId: string | null) =>
     invoke("group_update_persona", { id, personaId }) as Promise<void>,
-  groupUpdateSpeakerSelectionMethod: (id: string, speakerSelectionMethod: "llm" | "heuristic" | "round_robin") =>
-    invoke("group_update_speaker_selection_method", { id, speakerSelectionMethod }) as Promise<void>,
+  groupUpdateSpeakerSelectionMethod: (
+    id: string,
+    speakerSelectionMethod: "llm" | "heuristic" | "round_robin",
+  ) =>
+    invoke("group_update_speaker_selection_method", {
+      id,
+      speakerSelectionMethod,
+    }) as Promise<void>,
   groupUpdateMemoryType: (id: string, memoryType: "manual" | "dynamic") =>
     invoke("group_update_memory_type", { id, memoryType }) as Promise<void>,
   groupUpdateBackgroundImage: (id: string, backgroundImagePath: string | null) =>
     invoke("group_update_background_image", { id, backgroundImagePath }) as Promise<void>,
   groupUpdateCharacterIds: (id: string, characterIds: string[]) =>
-    invoke("group_update_character_ids", { id, characterIdsJson: JSON.stringify(characterIds) }) as Promise<void>,
+    invoke("group_update_character_ids", {
+      id,
+      characterIdsJson: JSON.stringify(characterIds),
+    }) as Promise<void>,
   groupUpdateMutedCharacterIds: (id: string, mutedCharacterIds: string[]) =>
-    invoke("group_update_muted_character_ids", { id, mutedCharacterIdsJson: JSON.stringify(mutedCharacterIds) }) as Promise<void>,
+    invoke("group_update_muted_character_ids", {
+      id,
+      mutedCharacterIdsJson: JSON.stringify(mutedCharacterIds),
+    }) as Promise<void>,
   groupUpdateStartingScene: (id: string, startingScene: any | null) =>
-    invoke("group_update_starting_scene", { id, startingSceneJson: startingScene ? JSON.stringify(startingScene) : null }) as Promise<void>,
+    invoke("group_update_starting_scene", {
+      id,
+      startingSceneJson: startingScene ? JSON.stringify(startingScene) : null,
+    }) as Promise<void>,
   groupCreateSession: (groupId: string) =>
-    invoke<string>("group_create_session", { groupId }).then((s) =>
-      JSON.parse(s),
-    ),
+    invoke<string>("group_create_session", { groupId }).then((s) => JSON.parse(s)),
 
   // Group Sessions
   groupSessionsList: () =>
@@ -741,6 +756,26 @@ export const storageBridge = {
       memoryEmbeddingsJson: JSON.stringify(memoryEmbeddings),
       memorySummary: memorySummary ?? null,
       memorySummaryTokenCount: memorySummaryTokenCount ?? null,
+      memoryStatus: memoryStatus ?? null,
+      memoryError: memoryError ?? null,
+    }) as Promise<void>,
+  groupSessionUpdateMemoryState: (
+    sessionId: string,
+    memories: string[],
+    memoryEmbeddings: unknown[],
+    memorySummary?: string | null,
+    memorySummaryTokenCount?: number | null,
+    memoryToolEvents?: unknown[] | null,
+    memoryStatus?: string | null,
+    memoryError?: string | null,
+  ) =>
+    invoke("group_session_update_memory_state", {
+      sessionId,
+      memoriesJson: JSON.stringify(memories),
+      memoryEmbeddingsJson: JSON.stringify(memoryEmbeddings),
+      memorySummary: memorySummary ?? null,
+      memorySummaryTokenCount: memorySummaryTokenCount ?? null,
+      memoryToolEventsJson: JSON.stringify(memoryToolEvents ?? []),
       memoryStatus: memoryStatus ?? null,
       memoryError: memoryError ?? null,
     }) as Promise<void>,

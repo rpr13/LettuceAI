@@ -2284,6 +2284,41 @@ pub fn group_session_update_memories(
     Ok(())
 }
 
+/// Replace the full memory state for a group session.
+#[tauri::command]
+pub fn group_session_update_memory_state(
+    session_id: String,
+    memories_json: String,
+    memory_embeddings_json: String,
+    memory_summary: Option<String>,
+    memory_summary_token_count: Option<i32>,
+    memory_tool_events_json: String,
+    memory_status: Option<String>,
+    memory_error: Option<String>,
+    pool: State<'_, SwappablePool>,
+) -> Result<(), String> {
+    let conn = pool.get_connection()?;
+    let now = now_ms();
+
+    conn.execute(
+        "UPDATE group_sessions SET memories = ?1, memory_embeddings = ?2, memory_summary = ?3, memory_summary_token_count = ?4, memory_tool_events = ?5, memory_status = ?6, memory_error = ?7, updated_at = ?8 WHERE id = ?9",
+        params![
+            memories_json,
+            memory_embeddings_json,
+            memory_summary.unwrap_or_default(),
+            memory_summary_token_count.unwrap_or(0),
+            memory_tool_events_json,
+            memory_status.unwrap_or_else(|| "idle".to_string()),
+            memory_error,
+            now,
+            session_id
+        ],
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    Ok(())
+}
+
 /// Update manual memories for a group session
 #[tauri::command]
 pub fn group_session_update_manual_memories(
