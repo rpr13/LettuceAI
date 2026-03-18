@@ -257,15 +257,6 @@ export function ChatConversationPage() {
     streamingReasoning,
   } = chatController;
 
-  const selectedSceneContent = useMemo(() => {
-    if (!character) return "";
-    const selectedScene =
-      character.scenes.find((scene) => scene.id === session?.selectedSceneId) ??
-      character.scenes.find((scene) => scene.id === character.defaultSceneId) ??
-      character.scenes[0];
-    return selectedScene ? resolveSceneContent(selectedScene).trim() : "";
-  }, [character, session?.selectedSceneId]);
-
   const handleToggleGroupBranchCharacter = useCallback(
     (id: string) => {
       if (!character || id === character.id) return;
@@ -1633,8 +1624,7 @@ export function ChatConversationPage() {
           <LayoutGroup id="swap-message-layout">
             {messages.map((message, index) => {
               const isSceneMessage = isStartingSceneMessage(message);
-              const sourceContent =
-                isSceneMessage && selectedSceneContent ? selectedSceneContent : message.content;
+              const sourceContent = message.content;
               const renderedMessage =
                 swapPlaces && (message.role === "user" || message.role === "assistant")
                   ? {
@@ -1649,7 +1639,8 @@ export function ChatConversationPage() {
                     };
               const isAssistant = renderedMessage.role === "assistant";
               const isUser = renderedMessage.role === "user";
-              const actionable = (isAssistant || isUser) && !message.id.startsWith("placeholder");
+              const actionable =
+                (isAssistant || isUser || isSceneMessage) && !message.id.startsWith("placeholder");
               // Replace placeholders for display only
               const charName = swapPlaces
                 ? (chatController.persona?.title ?? "")

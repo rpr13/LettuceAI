@@ -88,6 +88,10 @@ export function normalizeStartingSceneMessage(
   }
 
   const currentSceneMessage = messages[sceneMessageIndex];
+  if (currentSceneMessage.sceneEdited) {
+    return messages;
+  }
+
   if (currentSceneMessage.content.trim() === expectedSceneContent) {
     return messages;
   }

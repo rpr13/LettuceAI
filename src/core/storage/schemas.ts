@@ -1555,6 +1555,8 @@ export const MessageSchema = z.object({
   role: z.enum(["system", "user", "assistant", "scene"]),
   content: z.string(),
   createdAt: z.number().int(),
+  /** Session-only override for scene messages so reloads do not snap back to the character scene. */
+  sceneEdited: z.boolean().optional(),
   usage: UsageSummarySchema.optional().nullable(),
   variants: z.array(MessageVariantSchema).optional(),
   selectedVariantId: z.string().uuid().nullish(),

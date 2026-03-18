@@ -138,6 +138,7 @@ export function useChatMessageActionsController({ context }: UseChatMessageActio
         const updatedMessage: StoredMessage = {
           ...currentMessage,
           content: sceneContent,
+          sceneEdited: false,
         };
 
         const updatedMessages = state.messages.map((message) =>
@@ -240,6 +241,7 @@ export function useChatMessageActionsController({ context }: UseChatMessageActio
           ? {
               ...message,
               content: updatedContent,
+              ...(message.role === "scene" ? { sceneEdited: true } : {}),
               variants: (message.variants ?? []).map((variant) =>
                 variant.id === (message.selectedVariantId ?? variant.id)
                   ? { ...variant, content: updatedContent }

@@ -125,9 +125,12 @@ export function MessageActionsBottomSheet({
   const [settings, setSettings] = useState<Settings | null>(null);
   const [modelName, setModelName] = useState<string | null>(null);
   const [modelProviderId, setModelProviderId] = useState<string | null>(null);
+  const isSceneMessage = messageAction?.message.role === "scene";
+  const isAssistantLikeMessage =
+    messageAction?.message.role === "assistant" || messageAction?.message.role === "scene";
 
   const canEdit =
-    messageAction?.message.role === "assistant" ||
+    isAssistantLikeMessage ||
     (() => {
       const userMessages = messages.filter(
         (m) => m.role === "user" && !m.id.startsWith("placeholder"),
@@ -180,15 +183,17 @@ export function MessageActionsBottomSheet({
       includeExitIcon={false}
       onClose={() => closeMessageActions(true)}
       title={
-        messageAction?.message.role === "assistant"
-          ? t("chats.actions.assistantMessage")
-          : t("chats.actions.userMessage")
+        isSceneMessage
+          ? t("chats.message.sceneLabel")
+          : isAssistantLikeMessage
+            ? t("chats.actions.assistantMessage")
+            : t("chats.actions.userMessage")
       }
     >
       {messageAction && (
         <div className="text-white">
           {/* Token usage */}
-          {messageAction.message.usage && (
+          {!isSceneMessage && messageAction.message.usage && (
             <div className="mb-4 space-y-2">
               <div className="flex items-center gap-x-3 text-xs text-white/40">
                 <div className="flex items-center gap-2 border-r border-white/10 pr-3">
@@ -250,7 +255,8 @@ export function MessageActionsBottomSheet({
           {messageAction.mode === "view" ? (
             <div className="space-y-1">
               {/* Memories section */}
-              {characterMemoryType === "dynamic" &&
+              {!isSceneMessage &&
+                characterMemoryType === "dynamic" &&
                 (messageAction.message.memoryRefs?.length ?? 0) > 0 && (
                   <div className="mb-3 p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10">
                     <div className="flex items-center gap-2 mb-2">
@@ -286,7 +292,7 @@ export function MessageActionsBottomSheet({
                   </div>
                 )}
 
-              {usedLorebookEntries.length > 0 && (
+              {!isSceneMessage && usedLorebookEntries.length > 0 && (
                 <div className="mb-3 p-3 rounded-lg border border-sky-500/20 bg-sky-500/10">
                   <div className="flex items-center gap-2 mb-2">
                     <BookOpen size={14} className="text-sky-300" />
@@ -325,28 +331,34 @@ export function MessageActionsBottomSheet({
                 />
               )}
 
-              <ActionRow
-                icon={Copy}
-                label={t("chats.actions.copy")}
-                iconBg="bg-violet-500/20"
-                onClick={() => void handleCopy()}
-              />
+              {!isSceneMessage && (
+                <ActionRow
+                  icon={Copy}
+                  label={t("chats.actions.copy")}
+                  iconBg="bg-violet-500/20"
+                  onClick={() => void handleCopy()}
+                />
+              )}
 
-              <ActionRow
-                icon={messageAction.message.isPinned ? PinOff : Pin}
-                label={
-                  messageAction.message.isPinned ? t("chats.actions.unpin") : t("chats.actions.pin")
-                }
-                iconBg="bg-amber-500/20"
-                onClick={() => void handleTogglePin(messageAction.message)}
-                disabled={actionBusy}
-              />
+              {!isSceneMessage && (
+                <ActionRow
+                  icon={messageAction.message.isPinned ? PinOff : Pin}
+                  label={
+                    messageAction.message.isPinned
+                      ? t("chats.actions.unpin")
+                      : t("chats.actions.pin")
+                  }
+                  iconBg="bg-amber-500/20"
+                  onClick={() => void handleTogglePin(messageAction.message)}
+                  disabled={actionBusy}
+                />
+              )}
 
-              {/* Separator */}
-              <div className="h-px bg-white/5 my-2" />
+              {!isSceneMessage && <div className="h-px bg-white/5 my-2" />}
 
               {/* Chat flow actions */}
               {(messageAction.message.role === "assistant" ||
+                messageAction.message.role === "scene" ||
                 messageAction.message.role === "user") && (
                 <ActionRow
                   icon={RotateCcw}
@@ -357,34 +369,39 @@ export function MessageActionsBottomSheet({
                 />
               )}
 
-              <ActionRow
-                icon={GitBranch}
-                label={t("chats.actions.branchFromHere")}
-                iconBg="bg-emerald-500/20"
-                onClick={() => void handleBranchFromMessage(messageAction.message)}
-                disabled={actionBusy}
-              />
+              {!isSceneMessage && (
+                <ActionRow
+                  icon={GitBranch}
+                  label={t("chats.actions.branchFromHere")}
+                  iconBg="bg-emerald-500/20"
+                  onClick={() => void handleBranchFromMessage(messageAction.message)}
+                  disabled={actionBusy}
+                />
+              )}
 
-              <ActionRow
-                icon={Users}
-                label={t("chats.actions.branchToGroupChat")}
-                iconBg="bg-rose-500/20"
-                onClick={() => onBranchToGroupChat(messageAction.message)}
-                disabled={actionBusy}
-              />
+              {!isSceneMessage && (
+                <ActionRow
+                  icon={Users}
+                  label={t("chats.actions.branchToGroupChat")}
+                  iconBg="bg-rose-500/20"
+                  onClick={() => onBranchToGroupChat(messageAction.message)}
+                  disabled={actionBusy}
+                />
+              )}
 
-              <ActionRow
-                icon={Users}
-                label={t("chats.actions.branchToCharacter")}
-                iconBg="bg-pink-500/20"
-                onClick={() => onBranchToCharacter(messageAction.message)}
-                disabled={actionBusy}
-              />
+              {!isSceneMessage && (
+                <ActionRow
+                  icon={Users}
+                  label={t("chats.actions.branchToCharacter")}
+                  iconBg="bg-pink-500/20"
+                  onClick={() => onBranchToCharacter(messageAction.message)}
+                  disabled={actionBusy}
+                />
+              )}
 
-              {/* Separator */}
-              <div className="h-px bg-white/5 my-2" />
+              {!isSceneMessage && <div className="h-px bg-white/5 my-2" />}
 
-              {characterId && (
+              {!isSceneMessage && characterId && (
                 <ActionRow
                   icon={Paintbrush}
                   label={t("chats.actions.chatAppearance")}
@@ -396,17 +413,19 @@ export function MessageActionsBottomSheet({
                 />
               )}
 
-              <ActionRow
-                icon={Trash2}
-                label={
-                  messageAction.message.isPinned
-                    ? t("chats.actions.unpinToDelete")
-                    : t("chats.actions.delete")
-                }
-                onClick={() => void handleDeleteMessage(messageAction.message)}
-                disabled={actionBusy || messageAction.message.isPinned}
-                variant="danger"
-              />
+              {!isSceneMessage && (
+                <ActionRow
+                  icon={Trash2}
+                  label={
+                    messageAction.message.isPinned
+                      ? t("chats.actions.unpinToDelete")
+                      : t("chats.actions.delete")
+                  }
+                  onClick={() => void handleDeleteMessage(messageAction.message)}
+                  disabled={actionBusy || messageAction.message.isPinned}
+                  variant="danger"
+                />
+              )}
             </div>
           ) : (
             <div className="space-y-4">
