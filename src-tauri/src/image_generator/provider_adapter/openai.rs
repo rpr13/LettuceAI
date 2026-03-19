@@ -1,8 +1,10 @@
+use base64::{engine::general_purpose::STANDARD, Engine as _};
+use reqwest::multipart::{Form, Part};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
-use super::{ImageProviderAdapter, ImageResponseData};
+use super::{ImageProviderAdapter, ImageRequestPayload, ImageResponseData};
 use crate::image_generator::types::ImageGenerationRequest;
 
 pub struct OpenAIAdapter;
@@ -35,13 +37,75 @@ struct OpenAIImageData {
     b64_json: Option<String>,
 }
 
+fn decode_data_url(data_url: &str) -> Result<(String, Vec<u8>), String> {
+    let (prefix, payload) = data_url
+        .split_once(',')
+        .ok_or_else(|| "Invalid data URL format".to_string())?;
+    let mime_type = prefix
+        .strip_prefix("data:")
+        .and_then(|value| value.strip_suffix(";base64"))
+        .ok_or_else(|| "Invalid data URL prefix".to_string())?;
+    let bytes = STANDARD
+        .decode(payload)
+        .map_err(|error| format!("Failed to decode base64 image: {}", error))?;
+    Ok((mime_type.to_string(), bytes))
+}
+
+fn file_extension_for_mime(mime_type: &str) -> &'static str {
+    match mime_type {
+        "image/png" => "png",
+        "image/webp" => "webp",
+        "image/jpeg" | "image/jpg" => "jpg",
+        _ => "png",
+    }
+}
+
+fn multipart_form_for_edit(request: &ImageGenerationRequest) -> Result<Form, String> {
+    let mut form = Form::new()
+        .text("model", request.model.clone())
+        .text("prompt", request.prompt.clone());
+
+    if let Some(n) = request.n {
+        form = form.text("n", n.to_string());
+    }
+    if let Some(size) = request.size.as_ref() {
+        form = form.text("size", size.clone());
+    }
+    if let Some(quality) = request.quality.as_ref() {
+        form = form.text("quality", quality.clone());
+    }
+    form = form.text("response_format", "b64_json".to_string());
+
+    for image in request.input_images.as_ref().into_iter().flatten() {
+        let (mime_type, bytes) = decode_data_url(image)?;
+        let extension = file_extension_for_mime(&mime_type);
+        let filename = format!("input.{}", extension);
+        let part = Part::bytes(bytes)
+            .file_name(filename)
+            .mime_str(&mime_type)
+            .map_err(|error| format!("Failed to attach multipart image: {}", error))?;
+        form = form.part("image[]", part);
+    }
+
+    Ok(form)
+}
+
 impl ImageProviderAdapter for OpenAIAdapter {
-    fn endpoint(&self, base_url: &str) -> String {
+    fn endpoint(&self, base_url: &str, request: &ImageGenerationRequest) -> String {
         let trimmed = base_url.trim_end_matches('/');
-        if trimmed.ends_with("/v1") {
-            format!("{}/images/generations", trimmed)
+        let path = if request
+            .input_images
+            .as_ref()
+            .is_some_and(|images| !images.is_empty())
+        {
+            "/images/edits"
         } else {
-            format!("{}/v1/images/generations", trimmed)
+            "/images/generations"
+        };
+        if trimmed.ends_with("/v1") {
+            format!("{}{}", trimmed, path)
+        } else {
+            format!("{}/v1{}", trimmed, path)
         }
     }
 
@@ -67,7 +131,17 @@ impl ImageProviderAdapter for OpenAIAdapter {
         headers
     }
 
-    fn body(&self, request: &ImageGenerationRequest) -> Value {
+    fn payload(&self, request: &ImageGenerationRequest) -> Result<ImageRequestPayload, String> {
+        if request
+            .input_images
+            .as_ref()
+            .is_some_and(|images| !images.is_empty())
+        {
+            return Ok(ImageRequestPayload::Multipart(multipart_form_for_edit(
+                request,
+            )?));
+        }
+
         let dalle_req = DalleRequest {
             model: &request.model,
             prompt: &request.prompt,
@@ -75,10 +149,12 @@ impl ImageProviderAdapter for OpenAIAdapter {
             size: request.size.as_deref(),
             quality: request.quality.as_deref(),
             style: request.style.as_deref(),
-            response_format: "url",
+            response_format: "b64_json",
         };
 
-        serde_json::to_value(dalle_req).unwrap_or_else(|_| json!({}))
+        Ok(ImageRequestPayload::Json(
+            serde_json::to_value(dalle_req).unwrap_or_else(|_| json!({})),
+        ))
     }
 
     fn parse_response(&self, response: Value) -> Result<Vec<ImageResponseData>, String> {

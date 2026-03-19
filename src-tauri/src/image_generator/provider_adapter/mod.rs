@@ -1,14 +1,22 @@
+use reqwest::multipart::Form;
 use serde_json::Value;
 use std::collections::HashMap;
 
 use super::types::ImageGenerationRequest;
 
 pub mod google_gemini;
+pub mod nanogpt;
 pub mod openai;
 pub mod openrouter;
+pub mod xai;
+
+pub enum ImageRequestPayload {
+    Json(Value),
+    Multipart(Form),
+}
 
 pub trait ImageProviderAdapter: Send + Sync {
-    fn endpoint(&self, base_url: &str) -> String;
+    fn endpoint(&self, base_url: &str, request: &ImageGenerationRequest) -> String;
     #[allow(dead_code)]
     fn required_auth_headers(&self) -> &'static [&'static str];
     fn headers(
@@ -17,7 +25,7 @@ pub trait ImageProviderAdapter: Send + Sync {
         extra: Option<&HashMap<String, String>>,
     ) -> HashMap<String, String>;
 
-    fn body(&self, request: &ImageGenerationRequest) -> Value;
+    fn payload(&self, request: &ImageGenerationRequest) -> Result<ImageRequestPayload, String>;
     fn parse_response(&self, response: Value) -> Result<Vec<ImageResponseData>, String>;
 
     #[allow(dead_code)]
@@ -38,6 +46,8 @@ pub fn get_adapter(provider_id: &str) -> Result<Box<dyn ImageProviderAdapter>, S
         "openai" => Ok(Box::new(openai::OpenAIAdapter)),
         "openrouter" => Ok(Box::new(openrouter::OpenRouterAdapter)),
         "gemini" => Ok(Box::new(google_gemini::GoogleGeminiAdapter)),
+        "xai" => Ok(Box::new(xai::XAIAdapter)),
+        "nanogpt" => Ok(Box::new(nanogpt::NanoGPTAdapter)),
         _ => Err(format!(
             "Provider {} does not support image generation",
             provider_id

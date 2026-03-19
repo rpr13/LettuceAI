@@ -11,7 +11,7 @@ use crate::usage::{
 };
 use crate::utils::{log_error, log_info, now_millis};
 
-use super::provider_adapter::{get_adapter, ImageResponseData};
+use super::provider_adapter::{get_adapter, ImageRequestPayload, ImageResponseData};
 use super::storage::save_image;
 use super::types::{GeneratedImage, ImageGenerationRequest, ImageGenerationResponse};
 
@@ -81,17 +81,6 @@ pub async fn generate_image(
     let mut provider_label = request.provider_id.clone();
 
     let result: Result<ImageGenerationResponse, String> = async {
-        if request
-            .input_images
-            .as_ref()
-            .is_some_and(|images| !images.is_empty())
-            && request.provider_id == "openai"
-        {
-            return Err(
-                "This image provider does not support image edit requests yet.".to_string(),
-            );
-        }
-
         log_info(
             &app,
             "image_generator",
@@ -121,12 +110,12 @@ pub async fn generate_image(
                 base_url, request.model, api_key
             )
         } else {
-            adapter.endpoint(&base_url)
+            adapter.endpoint(&base_url, &request)
         };
 
         let headers = adapter.headers(&api_key, headers_map.as_ref());
 
-        let body = adapter.body(&request);
+        let payload = adapter.payload(&request)?;
 
         log_info(
             &app,
@@ -137,11 +126,17 @@ pub async fn generate_image(
         let client = reqwest::Client::new();
         let mut req_builder = client.post(&url);
 
+        let is_multipart = matches!(payload, ImageRequestPayload::Multipart(_));
         for (key, value) in headers {
+            if is_multipart && key.eq_ignore_ascii_case("content-type") {
+                continue;
+            }
             req_builder = req_builder.header(key, value);
         }
-
-        req_builder = req_builder.json(&body);
+        req_builder = match payload {
+            ImageRequestPayload::Json(body) => req_builder.json(&body),
+            ImageRequestPayload::Multipart(form) => req_builder.multipart(form),
+        };
 
         let response = req_builder.send().await.map_err(|e| {
             crate::utils::err_msg(module_path!(), line!(), format!("Request failed: {}", e))
