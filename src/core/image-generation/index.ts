@@ -174,14 +174,25 @@ export interface ImageGenerationOptions {
   providers: ProviderCredential[];
   defaultModel: Model | null;
   defaultProvider: ProviderCredential | null;
+  enabled: boolean;
 }
 
 function resolveImageGenerationOptionsWithPreference(
   settings: Settings,
   preferredModelId?: string | null,
+  enabled = true,
 ): ImageGenerationOptions {
   const models = settings.models.filter((model) => model.outputScopes?.includes("image"));
   const providers = settings.providerCredentials;
+  if (!enabled) {
+    return {
+      models,
+      providers,
+      defaultModel: null,
+      defaultProvider: null,
+      enabled: false,
+    };
+  }
   const defaultModel =
     (preferredModelId ? models.find((model) => model.id === preferredModelId) : null) ??
     models[0] ??
@@ -195,6 +206,7 @@ function resolveImageGenerationOptionsWithPreference(
     providers,
     defaultModel,
     defaultProvider,
+    enabled: true,
   };
 }
 
@@ -206,6 +218,7 @@ export function resolveAvatarGenerationOptions(settings: Settings): ImageGenerat
   return resolveImageGenerationOptionsWithPreference(
     settings,
     settings.advancedSettings?.avatarGenerationModelId,
+    settings.advancedSettings?.avatarGenerationEnabled ?? true,
   );
 }
 
@@ -213,6 +226,7 @@ export function resolveSceneGenerationOptions(settings: Settings): ImageGenerati
   return resolveImageGenerationOptionsWithPreference(
     settings,
     settings.advancedSettings?.sceneGenerationModelId,
+    settings.advancedSettings?.sceneGenerationEnabled ?? true,
   );
 }
 

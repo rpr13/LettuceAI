@@ -156,7 +156,11 @@ pub struct AdvancedSettings {
     #[serde(default)]
     pub summarisation_model_id: Option<String>,
     #[serde(default)]
+    pub avatar_generation_enabled: Option<bool>,
+    #[serde(default)]
     pub avatar_generation_model_id: Option<String>,
+    #[serde(default)]
+    pub scene_generation_enabled: Option<bool>,
     #[serde(default)]
     pub scene_generation_model_id: Option<String>,
     #[serde(default)]

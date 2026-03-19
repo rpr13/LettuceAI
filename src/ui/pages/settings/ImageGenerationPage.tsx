@@ -13,31 +13,41 @@ interface ImageGenerationState {
   loading: boolean;
   error: string | null;
   models: Model[];
+  avatarEnabled: boolean;
   avatarModelId: string | null;
+  sceneEnabled: boolean;
   sceneModelId: string | null;
 }
 
 type SelectorKey = "avatarModelId" | "sceneModelId";
+type ToggleKey = "avatarEnabled" | "sceneEnabled";
 
 type SelectorCardProps = {
   title: string;
   description: string;
+  enabled: boolean;
   selectedModel: Model | null;
   fallbackLabel: string;
   icon: LucideIcon;
   accentClassName: string;
+  onToggle: () => void;
   onClick: () => void;
 };
 
 function SelectorCard({
   title,
   description,
+  enabled,
   selectedModel,
   fallbackLabel,
   icon: Icon,
   accentClassName,
+  onToggle,
   onClick,
 }: SelectorCardProps) {
+  const { t } = useI18n();
+  const toggleId = `image-generation-toggle-${title.toLowerCase().replace(/\s+/g, "-")}`;
+
   return (
     <section className="space-y-3 rounded-xl border border-fg/10 bg-fg/5 px-4 py-4">
       <div className="flex items-start gap-3">
@@ -45,29 +55,75 @@ function SelectorCard({
           <Icon className="h-4 w-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold text-fg">{title}</h2>
-          <p className="mt-1 text-xs leading-relaxed text-fg/45">{description}</p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm font-semibold text-fg">{title}</h2>
+              <p className="mt-1 text-xs leading-relaxed text-fg/45">{description}</p>
+            </div>
+            <div className="flex items-center gap-2 pt-0.5">
+              <span className="text-[11px] font-medium text-fg/50">
+                {enabled ? t("common.labels.on") : t("common.labels.off")}
+              </span>
+              <input
+                id={toggleId}
+                type="checkbox"
+                checked={enabled}
+                onChange={(event) => {
+                  event.stopPropagation();
+                  onToggle();
+                }}
+                onClick={(event) => event.stopPropagation()}
+                className="peer sr-only"
+              />
+              <label
+                htmlFor={toggleId}
+                onClick={(event) => event.stopPropagation()}
+                className={cn(
+                  "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full",
+                  "border-2 border-transparent transition-all duration-200 ease-in-out",
+                  "focus:outline-none focus:ring-2 focus:ring-fg/20",
+                  enabled ? "bg-emerald-500 shadow-sm shadow-emerald-500/20" : "bg-fg/20",
+                )}
+              >
+                <span
+                  className={cn(
+                    "inline-block h-4 w-4 transform rounded-full bg-fg shadow-sm",
+                    "ring-0 transition duration-200 ease-in-out",
+                    enabled ? "translate-x-4" : "translate-x-0",
+                  )}
+                />
+              </label>
+            </div>
+          </div>
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={onClick}
-        className="flex w-full items-center justify-between rounded-xl border border-fg/10 bg-surface-el/20 px-3.5 py-3 text-left transition hover:bg-surface-el/30 focus:border-fg/25 focus:outline-none"
-      >
-        <div className="flex min-w-0 items-center gap-2">
-          {selectedModel ? getProviderIcon(selectedModel.providerId) : <Icon className="h-5 w-5 text-fg/40" />}
-          <div className="min-w-0">
-            <span className={cn("block truncate text-sm", selectedModel ? "text-fg" : "text-fg/50")}>
-              {selectedModel?.displayName || selectedModel?.name || fallbackLabel}
-            </span>
-            {selectedModel && (
-              <span className="block truncate text-xs text-fg/40">{selectedModel.name}</span>
+      {enabled && (
+        <button
+          type="button"
+          onClick={onClick}
+          className="flex w-full items-center justify-between rounded-xl border border-fg/10 bg-surface-el/20 px-3.5 py-3 text-left transition hover:bg-surface-el/30 focus:border-fg/25 focus:outline-none"
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            {selectedModel ? (
+              getProviderIcon(selectedModel.providerId)
+            ) : (
+              <Icon className="h-5 w-5 text-fg/40" />
             )}
+            <div className="min-w-0">
+              <span
+                className={cn("block truncate text-sm", selectedModel ? "text-fg" : "text-fg/50")}
+              >
+                {selectedModel?.displayName || selectedModel?.name || fallbackLabel}
+              </span>
+              {selectedModel && (
+                <span className="block truncate text-xs text-fg/40">{selectedModel.name}</span>
+              )}
+            </div>
           </div>
-        </div>
-        <ChevronDown className="h-4 w-4 shrink-0 text-fg/40" />
-      </button>
+          <ChevronDown className="h-4 w-4 shrink-0 text-fg/40" />
+        </button>
+      )}
     </section>
   );
 }
@@ -137,7 +193,9 @@ function ModelSelectionMenu({
             onClick={() => onSelect(null)}
             className={cn(
               "flex w-full items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition",
-              !selectedModelId ? "border-accent/40 bg-accent/10" : "border-fg/10 bg-fg/5 hover:bg-fg/10",
+              !selectedModelId
+                ? "border-accent/40 bg-accent/10"
+                : "border-fg/10 bg-fg/5 hover:bg-fg/10",
             )}
           >
             <Image className="h-5 w-5 text-fg/40" />
@@ -163,7 +221,9 @@ function ModelSelectionMenu({
                 </span>
                 <span className="block truncate text-xs text-fg/40">{model.name}</span>
               </div>
-              {selectedModelId === model.id && <Check className="h-4 w-4 shrink-0 text-accent/80" />}
+              {selectedModelId === model.id && (
+                <Check className="h-4 w-4 shrink-0 text-accent/80" />
+              )}
             </button>
           ))}
         </div>
@@ -178,7 +238,9 @@ export function ImageGenerationPage() {
     loading: true,
     error: null,
     models: [],
+    avatarEnabled: true,
     avatarModelId: null,
+    sceneEnabled: true,
     sceneModelId: null,
   });
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
@@ -195,7 +257,9 @@ export function ImageGenerationPage() {
           loading: false,
           error: null,
           models: options.models,
+          avatarEnabled: settings.advancedSettings?.avatarGenerationEnabled ?? true,
           avatarModelId: settings.advancedSettings?.avatarGenerationModelId ?? null,
+          sceneEnabled: settings.advancedSettings?.sceneGenerationEnabled ?? true,
           sceneModelId: settings.advancedSettings?.sceneGenerationModelId ?? null,
         });
       } catch (err) {
@@ -222,10 +286,55 @@ export function ImageGenerationPage() {
       const settings = await readSettings();
       await saveAdvancedSettings({
         ...(settings.advancedSettings ?? {}),
+        avatarGenerationEnabled: settings.advancedSettings?.avatarGenerationEnabled ?? true,
         avatarGenerationModelId:
-          key === "avatarModelId" ? modelId ?? undefined : settings.advancedSettings?.avatarGenerationModelId,
+          key === "avatarModelId"
+            ? (modelId ?? undefined)
+            : settings.advancedSettings?.avatarGenerationModelId,
+        sceneGenerationEnabled: settings.advancedSettings?.sceneGenerationEnabled ?? true,
         sceneGenerationModelId:
-          key === "sceneModelId" ? modelId ?? undefined : settings.advancedSettings?.sceneGenerationModelId,
+          key === "sceneModelId"
+            ? (modelId ?? undefined)
+            : settings.advancedSettings?.sceneGenerationModelId,
+      });
+    } catch (err) {
+      console.error("Failed to save image generation settings:", err);
+      setState((prev) => ({
+        ...prev,
+        error: err instanceof Error ? err.message : "Failed to save image generation settings",
+      }));
+    }
+  };
+
+  const persistToggle = async (key: ToggleKey, enabled: boolean) => {
+    setState((prev) => ({
+      ...prev,
+      [key]: enabled,
+      error: null,
+    }));
+
+    if (!enabled) {
+      if (key === "avatarEnabled") {
+        setShowAvatarMenu(false);
+      } else {
+        setShowSceneMenu(false);
+      }
+    }
+
+    try {
+      const settings = await readSettings();
+      await saveAdvancedSettings({
+        ...(settings.advancedSettings ?? {}),
+        avatarGenerationEnabled:
+          key === "avatarEnabled"
+            ? enabled
+            : (settings.advancedSettings?.avatarGenerationEnabled ?? true),
+        avatarGenerationModelId: settings.advancedSettings?.avatarGenerationModelId,
+        sceneGenerationEnabled:
+          key === "sceneEnabled"
+            ? enabled
+            : (settings.advancedSettings?.sceneGenerationEnabled ?? true),
+        sceneGenerationModelId: settings.advancedSettings?.sceneGenerationModelId,
       });
     } catch (err) {
       console.error("Failed to save image generation settings:", err);
@@ -237,10 +346,10 @@ export function ImageGenerationPage() {
   };
 
   const selectedAvatarModel = state.avatarModelId
-    ? state.models.find((model) => model.id === state.avatarModelId) ?? null
+    ? (state.models.find((model) => model.id === state.avatarModelId) ?? null)
     : null;
   const selectedSceneModel = state.sceneModelId
-    ? state.models.find((model) => model.id === state.sceneModelId) ?? null
+    ? (state.models.find((model) => model.id === state.sceneModelId) ?? null)
     : null;
 
   if (state.loading) {
@@ -277,20 +386,24 @@ export function ImageGenerationPage() {
             <SelectorCard
               title={t("imageGeneration.sections.avatar.title")}
               description={t("imageGeneration.sections.avatar.description")}
+              enabled={state.avatarEnabled}
               selectedModel={selectedAvatarModel}
               fallbackLabel={t("imageGeneration.labels.useFirstAvailable")}
               icon={Image}
               accentClassName="border-warning/30 bg-warning/10 text-warning/80"
+              onToggle={() => void persistToggle("avatarEnabled", !state.avatarEnabled)}
               onClick={() => setShowAvatarMenu(true)}
             />
 
             <SelectorCard
               title={t("imageGeneration.sections.scene.title")}
               description={t("imageGeneration.sections.scene.description")}
+              enabled={state.sceneEnabled}
               selectedModel={selectedSceneModel}
               fallbackLabel={t("imageGeneration.labels.useFirstAvailable")}
               icon={Sparkles}
               accentClassName="border-accent/30 bg-accent/10 text-accent/80"
+              onToggle={() => void persistToggle("sceneEnabled", !state.sceneEnabled)}
               onClick={() => setShowSceneMenu(true)}
             />
           </div>

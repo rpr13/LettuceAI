@@ -6715,6 +6715,14 @@ fn resolve_image_generation_target<'a>(
         .ok_or_else(|| "No image generation model is configured".to_string())
 }
 
+fn scene_generation_enabled(settings: &Settings) -> bool {
+    settings
+        .advanced_settings
+        .as_ref()
+        .and_then(|advanced| advanced.scene_generation_enabled)
+        .unwrap_or(true)
+}
+
 fn resolve_avatar_reference_data(
     app: &AppHandle,
     entity_prefix: &str,
@@ -6818,7 +6826,9 @@ fn build_scene_generation_request(
                 persona
                     .and_then(|value| value.nickname.as_deref())
                     .filter(|value| !value.trim().is_empty())
-                    .unwrap_or_else(|| persona.map(|value| value.title.as_str()).unwrap_or("the persona")),
+                    .unwrap_or_else(|| persona
+                        .map(|value| value.title.as_str())
+                        .unwrap_or("the persona")),
                 character.name
             )),
             (false, true) => reference_lines.push(format!(
@@ -6826,12 +6836,16 @@ fn build_scene_generation_request(
                 persona
                     .and_then(|value| value.nickname.as_deref())
                     .filter(|value| !value.trim().is_empty())
-                    .unwrap_or_else(|| persona.map(|value| value.title.as_str()).unwrap_or("the persona")),
+                    .unwrap_or_else(|| persona
+                        .map(|value| value.title.as_str())
+                        .unwrap_or("the persona")),
                 character.name,
                 persona
                     .and_then(|value| value.nickname.as_deref())
                     .filter(|value| !value.trim().is_empty())
-                    .unwrap_or_else(|| persona.map(|value| value.title.as_str()).unwrap_or("the persona"))
+                    .unwrap_or_else(|| persona
+                        .map(|value| value.title.as_str())
+                        .unwrap_or("the persona"))
             )),
             _ => {}
         }
@@ -7086,6 +7100,9 @@ pub async fn chat_generate_scene_image(
         .ok_or_else(|| "Message not found in loaded session window".to_string())?;
 
     let settings = super::storage::load_settings(&app)?;
+    if !scene_generation_enabled(&settings) {
+        return Err("Scene generation is disabled in settings".to_string());
+    }
     let (model, provider_cred) = resolve_image_generation_target(
         &settings,
         settings
@@ -7208,6 +7225,9 @@ pub async fn chat_generate_scene_prompt(
 
     let context = ChatContext::initialize(app.clone())?;
     let settings = &context.settings;
+    if !scene_generation_enabled(settings) {
+        return Err("Scene generation is disabled in settings".to_string());
+    }
     let session = context
         .load_session(&session_id)?
         .ok_or_else(|| "Session not found".to_string())?;

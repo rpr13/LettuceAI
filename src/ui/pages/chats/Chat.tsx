@@ -161,6 +161,7 @@ export function ChatConversationPage() {
   const [scenePromptError, setScenePromptError] = useState<string | null>(null);
   const [applyingSceneImage, setApplyingSceneImage] = useState(false);
   const [helpMeReplyEnabled, setHelpMeReplyEnabled] = useState(true);
+  const [sceneGenerationEnabled, setSceneGenerationEnabled] = useState(true);
   const [shouldTriggerFileInput, setShouldTriggerFileInput] = useState(false);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const isMobile = useMemo(() => getPlatform().type === "mobile", []);
@@ -222,6 +223,7 @@ export function ChatConversationPage() {
         if (mounted) {
           setAccessibilitySettings(next);
           setHelpMeReplyEnabled(settings.advancedSettings?.helpMeReplyEnabled ?? true);
+          setSceneGenerationEnabled(settings.advancedSettings?.sceneGenerationEnabled ?? true);
         }
       } catch (error) {
         console.error("Failed to load accessibility settings:", error);
@@ -1920,6 +1922,7 @@ export function ChatConversationPage() {
         setMessageAction={setMessageAction}
         onOpenSceneImageFlow={handleOpenSceneImageFlow}
         hasSceneImage={Boolean(resolveSceneAttachment(messageAction?.message))}
+        sceneGenerationEnabled={sceneGenerationEnabled}
         characterMemoryType={character?.memoryType}
         characterDefaultModelId={character?.defaultModelId ?? null}
         characterId={characterId}

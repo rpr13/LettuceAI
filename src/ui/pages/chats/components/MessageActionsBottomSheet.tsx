@@ -48,6 +48,7 @@ interface MessageActionsBottomSheetProps {
   setMessageAction: (value: MessageActionState | null) => void;
   onOpenSceneImageFlow: (message: StoredMessage) => void;
   hasSceneImage?: boolean;
+  sceneGenerationEnabled?: boolean;
   characterMemoryType?: string | null;
   characterDefaultModelId?: string | null;
   characterId?: string;
@@ -121,6 +122,7 @@ export function MessageActionsBottomSheet({
   setMessageAction,
   onOpenSceneImageFlow,
   hasSceneImage = false,
+  sceneGenerationEnabled = true,
   characterMemoryType,
   characterDefaultModelId,
   characterId,
@@ -374,21 +376,22 @@ export function MessageActionsBottomSheet({
                 />
               )}
 
-              {(messageAction.message.role === "assistant" ||
-                messageAction.message.role === "scene" ||
-                messageAction.message.role === "user") && (
-                <ActionRow
-                  icon={Image}
-                  label={
-                    hasSceneImage
-                      ? t("chats.actions.regenerateSceneImage")
-                      : t("chats.actions.generateSceneImage")
-                  }
-                  iconBg="bg-emerald-500/20"
-                  onClick={() => onOpenSceneImageFlow(messageAction.message)}
-                  disabled={actionBusy}
-                />
-              )}
+              {sceneGenerationEnabled &&
+                (messageAction.message.role === "assistant" ||
+                  messageAction.message.role === "scene" ||
+                  messageAction.message.role === "user") && (
+                  <ActionRow
+                    icon={Image}
+                    label={
+                      hasSceneImage
+                        ? t("chats.actions.regenerateSceneImage")
+                        : t("chats.actions.generateSceneImage")
+                    }
+                    iconBg="bg-emerald-500/20"
+                    onClick={() => onOpenSceneImageFlow(messageAction.message)}
+                    disabled={actionBusy}
+                  />
+                )}
 
               {!isSceneMessage && (
                 <ActionRow

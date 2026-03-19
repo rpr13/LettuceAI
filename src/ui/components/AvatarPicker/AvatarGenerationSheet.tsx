@@ -25,7 +25,7 @@ import {
   resolveGeneratedImageUrl,
   resolveAvatarGenerationOptions,
 } from "../../../core/image-generation";
-import { readSettings } from "../../../core/storage/repo";
+import { readSettings, SETTINGS_UPDATED_EVENT } from "../../../core/storage/repo";
 import type { Model, ProviderCredential } from "../../../core/storage/schemas";
 import { openDocs } from "../../../core/utils/docs";
 
@@ -96,7 +96,7 @@ export function AvatarGenerationSheet({
   useEffect(() => {
     if (!isOpen) return;
 
-    (async () => {
+    const loadModelState = async () => {
       try {
         setLoading(true);
         const settings = await readSettings();
@@ -104,16 +104,26 @@ export function AvatarGenerationSheet({
 
         setSelectedModel(options.defaultModel);
         setSelectedProvider(options.defaultProvider);
-        if (!options.defaultModel || !options.defaultProvider) {
+        setError(null);
+        if (!options.enabled || !options.defaultModel || !options.defaultProvider) {
           setError(t("components.avatarGeneration.modelsLoadError"));
         }
       } catch (err) {
         console.error("Failed to load models:", err);
         setError(t("components.avatarGeneration.modelsLoadError"));
+        setSelectedModel(null);
+        setSelectedProvider(null);
       } finally {
         setLoading(false);
       }
-    })();
+    };
+
+    void loadModelState();
+    window.addEventListener(SETTINGS_UPDATED_EVENT, loadModelState);
+
+    return () => {
+      window.removeEventListener(SETTINGS_UPDATED_EVENT, loadModelState);
+    };
   }, [isOpen, t]);
 
   useEffect(() => {

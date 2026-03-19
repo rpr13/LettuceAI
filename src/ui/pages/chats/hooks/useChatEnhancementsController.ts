@@ -39,6 +39,7 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
   const imageGenConfigRef = useRef<ImageGenConfig | null>(null);
   const hapticsEnabledRef = useRef<boolean>(false);
   const hapticIntensityRef = useRef<any>("light");
+  const sceneGenerationEnabledRef = useRef<boolean>(true);
   const lastHapticTimeRef = useRef<number>(0);
   const platformRef = useRef<string>("");
 
@@ -56,6 +57,8 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
         const acc = settings.advancedSettings?.accessibility;
         hapticsEnabledRef.current = acc?.haptics ?? false;
         hapticIntensityRef.current = acc?.hapticIntensity ?? "light";
+        sceneGenerationEnabledRef.current =
+          settings.advancedSettings?.sceneGenerationEnabled ?? true;
       } catch {
         // ignore settings read failures
       }
@@ -224,7 +227,9 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
       if (!currentMessage) return;
 
       const { cleanContent, directives } = parseImageDirectives(currentMessage.content);
-      const scenePrompt = options?.scenePrompt?.trim() ?? "";
+      const scenePrompt = sceneGenerationEnabledRef.current
+        ? (options?.scenePrompt?.trim() ?? "")
+        : "";
       if (directives.length === 0 && !scenePrompt) return;
 
       const config = directives.length > 0 ? await resolveDefaultImageGenConfig() : null;

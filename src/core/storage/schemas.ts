@@ -2059,7 +2059,9 @@ export const SettingsSchema = z.object({
   advancedSettings: z
     .object({
       summarisationModelId: z.string().optional(),
+      avatarGenerationEnabled: z.boolean().optional(),
       avatarGenerationModelId: z.string().optional(),
+      sceneGenerationEnabled: z.boolean().optional(),
       sceneGenerationModelId: z.string().optional(),
       creationHelperEnabled: z.boolean().optional(),
       creationHelperModelId: z.string().optional(),
@@ -2097,8 +2099,10 @@ export function createDefaultSettings(): Settings {
     models: [],
     appState: createDefaultAppState(),
     advancedSettings: {
+      avatarGenerationEnabled: true,
       creationHelperEnabled: false,
       helpMeReplyEnabled: true,
+      sceneGenerationEnabled: true,
       accessibility: createDefaultAccessibilitySettings(),
     },
     promptTemplateId: null,

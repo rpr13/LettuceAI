@@ -1,8 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Camera } from "lucide-react";
 import { cn, radius, interactive } from "../../design-tokens";
-import { resolveImageGenerationOptions } from "../../../core/image-generation";
-import { readSettings } from "../../../core/storage/repo";
+import { resolveAvatarGenerationOptions } from "../../../core/image-generation";
+import { readSettings, SETTINGS_UPDATED_EVENT } from "../../../core/storage/repo";
 import type { AvatarCrop } from "../../../core/storage/schemas";
 import { AvatarImage } from "../AvatarImage";
 
@@ -54,14 +54,19 @@ export function AvatarPicker({
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    (async () => {
+    const loadAvailability = async () => {
       try {
         const settings = await readSettings();
-        setHasImageGenModels(resolveImageGenerationOptions(settings).models.length > 0);
+        const options = resolveAvatarGenerationOptions(settings);
+        setHasImageGenModels(options.enabled && options.models.length > 0);
       } catch {
         setHasImageGenModels(false);
       }
-    })();
+    };
+
+    void loadAvailability();
+    window.addEventListener(SETTINGS_UPDATED_EVENT, loadAvailability);
+    return () => window.removeEventListener(SETTINGS_UPDATED_EVENT, loadAvailability);
   }, []);
 
   const sizeClasses = {
