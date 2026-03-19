@@ -1,7 +1,5 @@
-use base64::{engine::general_purpose, Engine as _};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
-use std::fs;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
 use uuid::Uuid;
@@ -19,6 +17,7 @@ use crate::image_generator::types::ImageGenerationRequest;
 use crate::storage_manager::characters as characters_storage;
 use crate::storage_manager::db::{now_ms, open_db};
 use crate::storage_manager::lorebook as lorebook_storage;
+use crate::storage_manager::media::{storage_read_image_data, storage_write_image_data};
 use crate::storage_manager::personas as personas_storage;
 use crate::storage_manager::settings::internal_read_settings;
 use crate::usage::{
@@ -55,6 +54,41 @@ fn get_cached_images_map(session_id: &str) -> Result<HashMap<String, UploadedIma
         .lock()
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     Ok(images.get(session_id).cloned().unwrap_or_default())
+}
+
+fn get_uploaded_image_record(
+    session_id: &str,
+    image_id: &str,
+) -> Result<Option<UploadedImage>, String> {
+    let images = UPLOADED_IMAGES
+        .lock()
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    Ok(images
+        .get(session_id)
+        .and_then(|session_images| session_images.get(image_id))
+        .cloned())
+}
+
+fn hydrate_uploaded_image(app: &AppHandle, image: UploadedImage) -> Result<UploadedImage, String> {
+    if !image.data.is_empty() || image.asset_id.is_none() {
+        return Ok(image);
+    }
+
+    let asset_id = image.asset_id.as_deref().unwrap_or_default();
+    let data = storage_read_image_data(app, asset_id)?;
+
+    Ok(UploadedImage { data, ..image })
+}
+
+fn insert_uploaded_image_record(session_id: &str, image: UploadedImage) -> Result<(), String> {
+    let mut images = UPLOADED_IMAGES
+        .lock()
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let session_images = images
+        .entry(session_id.to_string())
+        .or_insert_with(HashMap::new);
+    session_images.insert(image.id.clone(), image);
+    Ok(())
 }
 
 fn persist_session(app: &AppHandle, session: &CreationSession) -> Result<(), String> {
@@ -506,67 +540,90 @@ pub fn list_sessions(
 }
 
 pub fn save_uploaded_image(
+    app: &AppHandle,
     session_id: &str,
     image_id: String,
     data: String,
     mime_type: String,
 ) -> Result<(), String> {
-    let mut images = UPLOADED_IMAGES
-        .lock()
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    let session_images = images
-        .entry(session_id.to_string())
-        .or_insert_with(HashMap::new);
-    session_images.insert(
-        image_id.clone(),
+    let stored = storage_write_image_data(app, &image_id, &data)?;
+    insert_uploaded_image_record(
+        session_id,
+        UploadedImage {
+            id: image_id.clone(),
+            data: String::new(),
+            mime_type: if mime_type.trim().is_empty() {
+                stored.mime_type
+            } else {
+                mime_type
+            },
+            asset_id: Some(image_id.clone()),
+        },
+    )
+}
+
+fn save_uploaded_image_asset_ref(
+    session_id: &str,
+    image_id: String,
+    asset_id: String,
+    mime_type: String,
+) -> Result<(), String> {
+    insert_uploaded_image_record(
+        session_id,
         UploadedImage {
             id: image_id,
-            data,
+            data: String::new(),
             mime_type,
+            asset_id: Some(asset_id),
         },
-    );
-    Ok(())
+    )
 }
 
 pub fn get_uploaded_image(
+    app: &AppHandle,
     session_id: &str,
     image_id: &str,
 ) -> Result<Option<UploadedImage>, String> {
-    let images = UPLOADED_IMAGES
-        .lock()
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    Ok(images
-        .get(session_id)
-        .and_then(|session_images| session_images.get(image_id))
-        .cloned())
+    get_uploaded_image_record(session_id, image_id)?
+        .map(|image| hydrate_uploaded_image(app, image))
+        .transpose()
 }
 
-pub fn get_all_uploaded_images(session_id: &str) -> Result<Vec<UploadedImage>, String> {
+pub fn get_all_uploaded_images(
+    app: &AppHandle,
+    session_id: &str,
+) -> Result<Vec<UploadedImage>, String> {
     let images = UPLOADED_IMAGES
         .lock()
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    Ok(images
+    images
         .get(session_id)
-        .map(|session_images| session_images.values().cloned().collect())
-        .unwrap_or_default())
+        .map(|session_images| {
+            session_images
+                .values()
+                .cloned()
+                .map(|image| hydrate_uploaded_image(app, image))
+                .collect()
+        })
+        .unwrap_or_else(|| Ok(Vec::new()))
 }
 
 fn resolve_uploaded_image_id(session_id: &str, image_id: &str) -> Result<Option<String>, String> {
-    if get_uploaded_image(session_id, image_id)?.is_some() {
+    if get_uploaded_image_record(session_id, image_id)?.is_some() {
         return Ok(Some(image_id.to_string()));
     }
 
     let compact: String = image_id.chars().filter(|c| *c != '-').collect();
     if compact.len() >= 8 {
         let short_id: String = compact.chars().take(8).collect();
-        if get_uploaded_image(session_id, &short_id)?.is_some() {
+        if get_uploaded_image_record(session_id, &short_id)?.is_some() {
             return Ok(Some(short_id));
         }
     }
 
     if compact.len() >= 32 {
         if let Some(last) = get_last_generated_image(session_id)? {
-            if get_uploaded_image(session_id, &last)?.is_some() {
+            if get_uploaded_image_record(session_id, &last)?.is_some() {
                 return Ok(Some(last));
             }
         }
@@ -774,15 +831,13 @@ fn infer_default_image_id(session: &CreationSession) -> Option<String> {
         return Some(last);
     }
 
-    get_all_uploaded_images(&session.id)
-        .ok()
-        .and_then(|images| {
-            if images.len() == 1 {
-                images.into_iter().next().map(|img| img.id)
-            } else {
-                None
-            }
-        })
+    get_cached_images_map(&session.id).ok().and_then(|images| {
+        if images.len() == 1 {
+            images.into_iter().next().map(|(_, img)| img.id)
+        } else {
+            None
+        }
+    })
 }
 
 fn scene_id_hint(session: &CreationSession) -> Option<String> {
@@ -1577,64 +1632,43 @@ async fn execute_tool(
                     Ok((request, meta)) => match generate_image(app.clone(), request).await {
                         Ok(response) => {
                             if let Some(image) = response.images.first() {
-                                match fs::read(&image.file_path) {
-                                    Ok(bytes) => {
-                                        let encoded = general_purpose::STANDARD.encode(bytes);
-                                        let data_url = format!("data:image/png;base64,{}", encoded);
-                                        let image_id = short_image_id();
-                                        if let Err(err) = save_uploaded_image(
-                                            &session.id,
-                                            image_id.clone(),
-                                            data_url,
-                                            "image/png".to_string(),
-                                        ) {
-                                            record_image_generation_usage(
-                                                app,
-                                                &session.id,
-                                                &meta.model_id,
-                                                &meta.model_name,
-                                                &meta.provider_id,
-                                                &meta.provider_label,
-                                                session.draft.name.as_deref().unwrap_or(""),
-                                                false,
-                                                Some(err.clone()),
-                                            );
-                                            json!({ "success": false, "error": err })
-                                        } else {
-                                            let _ =
-                                                set_last_generated_image(&session.id, &image_id);
-                                            record_image_generation_usage(
-                                                app,
-                                                &session.id,
-                                                &meta.model_id,
-                                                &meta.model_name,
-                                                &meta.provider_id,
-                                                &meta.provider_label,
-                                                session.draft.name.as_deref().unwrap_or(""),
-                                                true,
-                                                None,
-                                            );
-                                            json!({
-                                                "success": true,
-                                                "image_id": image_id,
-                                                "message": "Image generated"
-                                            })
-                                        }
-                                    }
-                                    Err(err) => {
-                                        record_image_generation_usage(
-                                            app,
-                                            &session.id,
-                                            &meta.model_id,
-                                            &meta.model_name,
-                                            &meta.provider_id,
-                                            &meta.provider_label,
-                                            session.draft.name.as_deref().unwrap_or(""),
-                                            false,
-                                            Some(err.to_string()),
-                                        );
-                                        json!({ "success": false, "error": err.to_string() })
-                                    }
+                                let image_id = short_image_id();
+                                if let Err(err) = save_uploaded_image_asset_ref(
+                                    &session.id,
+                                    image_id.clone(),
+                                    image.asset_id.clone(),
+                                    image.mime_type.clone(),
+                                ) {
+                                    record_image_generation_usage(
+                                        app,
+                                        &session.id,
+                                        &meta.model_id,
+                                        &meta.model_name,
+                                        &meta.provider_id,
+                                        &meta.provider_label,
+                                        session.draft.name.as_deref().unwrap_or(""),
+                                        false,
+                                        Some(err.clone()),
+                                    );
+                                    json!({ "success": false, "error": err })
+                                } else {
+                                    let _ = set_last_generated_image(&session.id, &image_id);
+                                    record_image_generation_usage(
+                                        app,
+                                        &session.id,
+                                        &meta.model_id,
+                                        &meta.model_name,
+                                        &meta.provider_id,
+                                        &meta.provider_label,
+                                        session.draft.name.as_deref().unwrap_or(""),
+                                        true,
+                                        None,
+                                    );
+                                    json!({
+                                        "success": true,
+                                        "image_id": image_id,
+                                        "message": "Image generated"
+                                    })
                                 }
                             } else {
                                 record_image_generation_usage(
@@ -1755,65 +1789,72 @@ async fn execute_tool(
             let image_id = arguments.get("image_id").and_then(|v| v.as_str());
             if let (Some(persona_id), Some(image_id)) = (persona_id, image_id) {
                 match resolve_uploaded_image_id(&session.id, image_id) {
-                    Ok(Some(resolved_id)) => match get_uploaded_image(&session.id, &resolved_id) {
-                        Ok(Some(image)) => match personas_storage::personas_list(app.clone()) {
-                            Ok(raw) => match serde_json::from_str::<Value>(&raw) {
-                                Ok(Value::Array(personas)) => {
-                                    if let Some(persona) = personas.iter().find_map(|p| {
-                                        let id = p.get("id")?.as_str()?;
-                                        if id != persona_id {
-                                            return None;
-                                        }
-                                        Some(p)
-                                    }) {
-                                        let title = persona.get("title").and_then(|v| v.as_str());
-                                        let description =
-                                            persona.get("description").and_then(|v| v.as_str());
-                                        let is_default =
-                                            persona.get("isDefault").and_then(|v| v.as_bool());
-                                        if let (Some(title), Some(description)) =
-                                            (title, description)
-                                        {
-                                            let persona_json = json!({
-                                                "id": persona_id,
-                                                "title": title,
-                                                "description": description,
-                                                "avatarPath": image.data,
-                                                "isDefault": is_default.unwrap_or(false),
-                                            });
-                                            match personas_storage::persona_upsert(
-                                                app.clone(),
-                                                persona_json.to_string(),
-                                            ) {
-                                                Ok(updated) => {
-                                                    match serde_json::from_str::<Value>(&updated) {
-                                                        Ok(persona) => {
-                                                            json!({ "success": true, "persona": persona })
-                                                        }
-                                                        Err(e) => {
-                                                            json!({ "success": false, "error": e.to_string() })
+                    Ok(Some(resolved_id)) => {
+                        match get_uploaded_image(app, &session.id, &resolved_id) {
+                            Ok(Some(image)) => match personas_storage::personas_list(app.clone()) {
+                                Ok(raw) => match serde_json::from_str::<Value>(&raw) {
+                                    Ok(Value::Array(personas)) => {
+                                        if let Some(persona) = personas.iter().find_map(|p| {
+                                            let id = p.get("id")?.as_str()?;
+                                            if id != persona_id {
+                                                return None;
+                                            }
+                                            Some(p)
+                                        }) {
+                                            let title =
+                                                persona.get("title").and_then(|v| v.as_str());
+                                            let description =
+                                                persona.get("description").and_then(|v| v.as_str());
+                                            let is_default =
+                                                persona.get("isDefault").and_then(|v| v.as_bool());
+                                            if let (Some(title), Some(description)) =
+                                                (title, description)
+                                            {
+                                                let persona_json = json!({
+                                                    "id": persona_id,
+                                                    "title": title,
+                                                    "description": description,
+                                                    "avatarPath": image.data,
+                                                    "isDefault": is_default.unwrap_or(false),
+                                                });
+                                                match personas_storage::persona_upsert(
+                                                    app.clone(),
+                                                    persona_json.to_string(),
+                                                ) {
+                                                    Ok(updated) => {
+                                                        match serde_json::from_str::<Value>(
+                                                            &updated,
+                                                        ) {
+                                                            Ok(persona) => {
+                                                                json!({ "success": true, "persona": persona })
+                                                            }
+                                                            Err(e) => {
+                                                                json!({ "success": false, "error": e.to_string() })
+                                                            }
                                                         }
                                                     }
+                                                    Err(e) => {
+                                                        json!({ "success": false, "error": e })
+                                                    }
                                                 }
-                                                Err(e) => json!({ "success": false, "error": e }),
+                                            } else {
+                                                json!({ "success": false, "error": "Persona missing title or description" })
                                             }
                                         } else {
-                                            json!({ "success": false, "error": "Persona missing title or description" })
+                                            json!({ "success": false, "error": "Persona not found" })
                                         }
-                                    } else {
-                                        json!({ "success": false, "error": "Persona not found" })
                                     }
-                                }
-                                Ok(_) => {
-                                    json!({ "success": false, "error": "Unexpected persona list format" })
-                                }
-                                Err(e) => json!({ "success": false, "error": e.to_string() }),
+                                    Ok(_) => {
+                                        json!({ "success": false, "error": "Unexpected persona list format" })
+                                    }
+                                    Err(e) => json!({ "success": false, "error": e.to_string() }),
+                                },
+                                Err(e) => json!({ "success": false, "error": e }),
                             },
+                            Ok(None) => json!({ "success": false, "error": "Image not found" }),
                             Err(e) => json!({ "success": false, "error": e }),
-                        },
-                        Ok(None) => json!({ "success": false, "error": "Image not found" }),
-                        Err(e) => json!({ "success": false, "error": e }),
-                    },
+                        }
+                    }
                     Ok(None) => json!({ "success": false, "error": "Image not found" }),
                     Err(e) => json!({ "success": false, "error": e }),
                 }
@@ -2319,7 +2360,7 @@ pub async fn send_message(
 
     if let Some(images) = uploaded_images {
         for (id, data, mime_type) in images {
-            save_uploaded_image(&session_id, id, data, mime_type)?;
+            save_uploaded_image(&app, &session_id, id, data, mime_type)?;
         }
     }
 
@@ -3108,7 +3149,7 @@ pub fn complete_session(app: &AppHandle, session_id: &str) -> Result<DraftCharac
     // Resolve avatar path if it's an ID (not data URI)
     if let Some(ref path) = draft.avatar_path {
         if !path.starts_with("data:") {
-            if let Ok(Some(img)) = get_uploaded_image(session_id, path) {
+            if let Ok(Some(img)) = get_uploaded_image(app, session_id, path) {
                 draft.avatar_path = Some(img.data);
             }
         }
@@ -3117,7 +3158,7 @@ pub fn complete_session(app: &AppHandle, session_id: &str) -> Result<DraftCharac
     // Resolve background path if it's an ID (not data URI)
     if let Some(ref path) = draft.background_image_path {
         if !path.starts_with("data:") {
-            if let Ok(Some(img)) = get_uploaded_image(session_id, path) {
+            if let Ok(Some(img)) = get_uploaded_image(app, session_id, path) {
                 draft.background_image_path = Some(img.data);
             }
         }

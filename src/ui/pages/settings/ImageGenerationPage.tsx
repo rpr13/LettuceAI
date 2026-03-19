@@ -1,13 +1,15 @@
 import { useState, useCallback, useEffect } from "react";
 import { Image, Loader2, Download, Sparkles, AlertCircle, ChevronDown } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { convertFileSrc } from "@tauri-apps/api/core";
 
 import {
   generateImage,
   getModelSizes,
   type ImageGenerationRequest,
   type GeneratedImage,
+  resolveGeneratedImageUrl,
+  resolveImageGenerationOptions,
+  resolveProviderCredential,
 } from "../../../core/image-generation";
 import { readSettings } from "../../../core/storage/repo";
 import type { Model, ProviderCredential } from "../../../core/storage/schemas";
@@ -22,6 +24,65 @@ interface ImageGenerationState {
   selectedModel: Model | null;
   selectedProvider: ProviderCredential | null;
   generatedImages: GeneratedImage[];
+}
+
+function GeneratedImageCard({ image, index }: { image: GeneratedImage; index: number }) {
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void resolveGeneratedImageUrl(image)
+      .then((url) => {
+        if (!cancelled) {
+          setSrc(url ?? null);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to resolve generated image:", err);
+        if (!cancelled) {
+          setSrc(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [image]);
+
+  return (
+    <div className="relative group rounded-xl overflow-hidden border border-fg/10 bg-fg/5">
+      {src ? (
+        <img
+          src={src}
+          alt={`Generated image ${index + 1}`}
+          className="w-full aspect-square object-cover"
+          loading="lazy"
+        />
+      ) : (
+        <div className="w-full aspect-square flex items-center justify-center">
+          <Loader2 className="h-5 w-5 animate-spin text-fg/40" />
+        </div>
+      )}
+      {image.text && (
+        <div className="absolute bottom-0 left-0 right-0 bg-surface-el/70 px-2 py-1 text-xs text-fg/70 truncate">
+          {image.text}
+        </div>
+      )}
+      {src ? (
+        <div className="absolute inset-0 bg-surface-el/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+          <button
+            onClick={() => {
+              window.open(src, "_blank");
+            }}
+            className="rounded-full bg-fg/20 p-2 hover:bg-fg/30 transition"
+          >
+            <Download className="h-4 w-4 text-fg" />
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function ImageGenerationPage() {
@@ -48,25 +109,15 @@ export function ImageGenerationPage() {
     (async () => {
       try {
         const settings = await readSettings();
-        const imageModels = settings.models.filter((m) => m.outputScopes?.includes("image"));
-        const providers = settings.providerCredentials;
-
-        const selectedModel = imageModels[0] ?? null;
-        const selectedProvider = selectedModel
-          ? providers.find(
-              (p) =>
-                p.providerId === selectedModel.providerId &&
-                p.label === selectedModel.providerLabel
-            ) ?? providers.find((p) => p.providerId === selectedModel.providerId) ?? null
-          : null;
+        const options = resolveImageGenerationOptions(settings);
 
         setState((prev) => ({
           ...prev,
           loading: false,
-          models: imageModels,
-          providers,
-          selectedModel,
-          selectedProvider,
+          models: options.models,
+          providers: options.providers,
+          selectedModel: options.defaultModel,
+          selectedProvider: options.defaultProvider,
         }));
       } catch (err) {
         console.error("Failed to load image generation settings:", err);
@@ -83,10 +134,7 @@ export function ImageGenerationPage() {
     (modelId: string) => {
       const model = state.models.find((m) => m.id === modelId) ?? null;
       const provider = model
-        ? state.providers.find(
-            (p) =>
-              p.providerId === model.providerId && p.label === model.providerLabel
-          ) ?? state.providers.find((p) => p.providerId === model.providerId) ?? null
+        ? resolveProviderCredential(state.providers, model.providerId, model.providerLabel)
         : null;
 
       setState((prev) => ({
@@ -103,7 +151,7 @@ export function ImageGenerationPage() {
         }
       }
     },
-    [state.models, state.providers, size]
+    [state.models, state.providers, size],
   );
 
   const handleGenerate = useCallback(async () => {
@@ -205,7 +253,9 @@ export function ImageGenerationPage() {
 
         {/* Model Selection */}
         <div className="space-y-2">
-          <label className="text-[11px] font-medium text-fg/70">{t("imageGeneration.labels.model")}</label>
+          <label className="text-[11px] font-medium text-fg/70">
+            {t("imageGeneration.labels.model")}
+          </label>
           <select
             value={state.selectedModel?.id ?? ""}
             onChange={(e) => handleModelChange(e.target.value)}
@@ -221,7 +271,9 @@ export function ImageGenerationPage() {
 
         {/* Prompt Input */}
         <div className="space-y-2">
-          <label className="text-[11px] font-medium text-fg/70">{t("imageGeneration.labels.prompt")}</label>
+          <label className="text-[11px] font-medium text-fg/70">
+            {t("imageGeneration.labels.prompt")}
+          </label>
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
@@ -255,7 +307,9 @@ export function ImageGenerationPage() {
             >
               {/* Size */}
               <div className="space-y-2">
-                <label className="text-[11px] font-medium text-fg/70">{t("imageGeneration.labels.size")}</label>
+                <label className="text-[11px] font-medium text-fg/70">
+                  {t("imageGeneration.labels.size")}
+                </label>
                 <div className="flex flex-wrap gap-2">
                   {availableSizes.map((s) => (
                     <button
@@ -278,7 +332,9 @@ export function ImageGenerationPage() {
                 <>
                   {/* Quality */}
                   <div className="space-y-2">
-                    <label className="text-[11px] font-medium text-fg/70">{t("imageGeneration.labels.quality")}</label>
+                    <label className="text-[11px] font-medium text-fg/70">
+                      {t("imageGeneration.labels.quality")}
+                    </label>
                     <div className="flex gap-2">
                       {["standard", "hd"].map((q) => (
                         <button
@@ -298,7 +354,9 @@ export function ImageGenerationPage() {
 
                   {/* Style */}
                   <div className="space-y-2">
-                    <label className="text-[11px] font-medium text-fg/70">{t("imageGeneration.labels.style")}</label>
+                    <label className="text-[11px] font-medium text-fg/70">
+                      {t("imageGeneration.labels.style")}
+                    </label>
                     <div className="flex gap-2">
                       {["vivid", "natural"].map((s) => (
                         <button
@@ -346,33 +404,11 @@ export function ImageGenerationPage() {
             <h3 className="text-sm font-medium text-fg/70">Generated Images</h3>
             <div className="grid grid-cols-2 gap-3">
               {state.generatedImages.map((img, idx) => (
-                <div
-                  key={`${img.filePath}-${idx}`}
-                  className="relative group rounded-xl overflow-hidden border border-fg/10 bg-fg/5"
-                >
-                  <img
-                    src={convertFileSrc(img.filePath)}
-                    alt={`Generated image ${idx + 1}`}
-                    className="w-full aspect-square object-cover"
-                    loading="lazy"
-                  />
-                  {img.text && (
-                    <div className="absolute bottom-0 left-0 right-0 bg-surface-el/70 px-2 py-1 text-xs text-fg/70 truncate">
-                      {img.text}
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-surface-el/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <button
-                      onClick={() => {
-                        // Open image in default viewer
-                        window.open(convertFileSrc(img.filePath), "_blank");
-                      }}
-                      className="rounded-full bg-fg/20 p-2 hover:bg-fg/30 transition"
-                    >
-                      <Download className="h-4 w-4 text-fg" />
-                    </button>
-                  </div>
-                </div>
+                <GeneratedImageCard
+                  key={`${img.assetId || img.filePath}-${idx}`}
+                  image={img}
+                  index={idx}
+                />
               ))}
             </div>
           </div>

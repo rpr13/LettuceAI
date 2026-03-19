@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useRef } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { type as getPlatform } from "@tauri-apps/plugin-os";
 import { impactFeedback } from "@tauri-apps/plugin-haptics";
 
 import { addChatMessageAttachment } from "../../../../core/chat/manager";
-import { generateImage, type ImageGenerationRequest } from "../../../../core/image-generation";
+import {
+  generateImage,
+  resolveGeneratedImageUrl,
+  resolveImageGenerationOptions,
+  resolveProviderCredential,
+  type ImageGenerationRequest,
+} from "../../../../core/image-generation";
 import type { GeneratedImage } from "../../../../core/image-generation";
 import { readSettings, SETTINGS_UPDATED_EVENT } from "../../../../core/storage/repo";
 import type { ImageAttachment, Session, StoredMessage } from "../../../../core/storage/schemas";
@@ -79,19 +84,15 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
     if (imageGenConfigRef.current) return imageGenConfigRef.current;
 
     const settings = await readSettings();
-    const imageModels = settings.models.filter((model) => model.outputScopes?.includes("image"));
-    const firstModel = imageModels[0];
+    const options = resolveImageGenerationOptions(settings);
+    const firstModel = options.defaultModel;
     if (!firstModel) return null;
 
-    const providerCreds = settings.providerCredentials;
-    const provider =
-      providerCreds.find(
-        (credential) =>
-          credential.providerId === firstModel.providerId &&
-          credential.label === firstModel.providerLabel,
-      ) ??
-      providerCreds.find((credential) => credential.providerId === firstModel.providerId) ??
-      null;
+    const provider = resolveProviderCredential(
+      options.providers,
+      firstModel.providerId,
+      firstModel.providerLabel,
+    );
     if (!provider) return null;
 
     const config = {
@@ -109,9 +110,9 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
         return generated.url;
       }
 
-      const src = generated.url || (generated.filePath ? convertFileSrc(generated.filePath) : null);
+      const src = await resolveGeneratedImageUrl(generated);
       if (!src) {
-        throw new Error("Generated image has no url or filePath");
+        throw new Error("Generated image has no asset or display url");
       }
 
       const response = await fetch(src);

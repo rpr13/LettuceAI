@@ -1,31 +1,33 @@
 use base64::{engine::general_purpose, Engine as _};
 use std::fs;
+use std::path::PathBuf;
 
 use super::legacy::storage_root;
 use crate::utils::{log_debug, log_info};
 
-#[tauri::command]
-pub fn storage_write_image(
-    app: tauri::AppHandle,
-    image_id: String,
-    base64_data: String,
-) -> Result<String, String> {
+pub struct StoredImageInfo {
+    pub file_path: String,
+    pub mime_type: String,
+}
+
+fn decode_base64_payload(base64_data: &str) -> Result<Vec<u8>, String> {
     let data = if let Some(comma_idx) = base64_data.find(',') {
         &base64_data[comma_idx + 1..]
     } else {
-        &base64_data
+        base64_data
     };
-    let bytes = general_purpose::STANDARD.decode(data).map_err(|e| {
+
+    general_purpose::STANDARD.decode(data).map_err(|e| {
         crate::utils::err_msg(
             module_path!(),
             line!(),
             format!("Failed to decode base64: {}", e),
         )
-    })?;
-    let images_dir = storage_root(&app)?.join("images");
-    fs::create_dir_all(&images_dir)
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    let extension = if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+    })
+}
+
+fn image_extension_from_bytes(bytes: &[u8]) -> &'static str {
+    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
         "jpg"
     } else if bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
         "png"
@@ -35,22 +37,95 @@ pub fn storage_write_image(
         "webp"
     } else {
         "png"
-    };
+    }
+}
+
+fn image_mime_type_from_extension(extension: &str) -> &'static str {
+    match extension {
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        _ => "image/png",
+    }
+}
+
+fn images_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let images_dir = storage_root(app)?.join("images");
+    fs::create_dir_all(&images_dir)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    Ok(images_dir)
+}
+
+fn find_image_path(images_dir: &PathBuf, image_id: &str) -> Option<(PathBuf, &'static str)> {
+    for ext in &["jpg", "jpeg", "png", "gif", "webp"] {
+        let image_path = images_dir.join(format!("{}.{}", image_id, ext));
+        if image_path.exists() {
+            return Some((image_path, image_mime_type_from_extension(ext)));
+        }
+    }
+
+    None
+}
+
+pub fn storage_write_image_bytes(
+    app: &tauri::AppHandle,
+    image_id: &str,
+    bytes: &[u8],
+) -> Result<StoredImageInfo, String> {
+    let images_dir = images_dir(app)?;
+    let extension = image_extension_from_bytes(bytes);
     let image_path = images_dir.join(format!("{}.{}", image_id, extension));
     fs::write(&image_path, bytes)
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    Ok(image_path.to_string_lossy().to_string())
+
+    Ok(StoredImageInfo {
+        file_path: image_path.to_string_lossy().to_string(),
+        mime_type: image_mime_type_from_extension(extension).to_string(),
+    })
+}
+
+pub fn storage_write_image_data(
+    app: &tauri::AppHandle,
+    image_id: &str,
+    base64_data: &str,
+) -> Result<StoredImageInfo, String> {
+    let bytes = decode_base64_payload(base64_data)?;
+    storage_write_image_bytes(app, image_id, &bytes)
+}
+
+pub fn storage_read_image_data(app: &tauri::AppHandle, image_id: &str) -> Result<String, String> {
+    let images_dir = images_dir(app)?;
+    if let Some((image_path, mime_type)) = find_image_path(&images_dir, image_id) {
+        let bytes = fs::read(&image_path)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        let base64_data = general_purpose::STANDARD.encode(&bytes);
+        return Ok(format!("data:{};base64,{}", mime_type, base64_data));
+    }
+
+    Err(crate::utils::err_msg(
+        module_path!(),
+        line!(),
+        format!("Image not found: {}", image_id),
+    ))
+}
+
+#[tauri::command]
+pub fn storage_write_image(
+    app: tauri::AppHandle,
+    image_id: String,
+    base64_data: String,
+) -> Result<String, String> {
+    Ok(storage_write_image_data(&app, &image_id, &base64_data)?.file_path)
 }
 
 #[tauri::command]
 pub fn storage_get_image_path(app: tauri::AppHandle, image_id: String) -> Result<String, String> {
-    let images_dir = storage_root(&app)?.join("images");
-    for ext in &["jpg", "jpeg", "png", "gif", "webp"] {
-        let image_path = images_dir.join(format!("{}.{}", image_id, ext));
-        if image_path.exists() {
-            return Ok(image_path.to_string_lossy().to_string());
-        }
+    let images_dir = images_dir(&app)?;
+    if let Some((image_path, _)) = find_image_path(&images_dir, &image_id) {
+        return Ok(image_path.to_string_lossy().to_string());
     }
+
     Err(crate::utils::err_msg(
         module_path!(),
         line!(),
@@ -60,7 +135,7 @@ pub fn storage_get_image_path(app: tauri::AppHandle, image_id: String) -> Result
 
 #[tauri::command]
 pub fn storage_delete_image(app: tauri::AppHandle, image_id: String) -> Result<(), String> {
-    let images_dir = storage_root(&app)?.join("images");
+    let images_dir = images_dir(&app)?;
     for ext in &["jpg", "jpeg", "png", "gif", "webp", "img"] {
         let image_path = images_dir.join(format!("{}.{}", image_id, ext));
         if image_path.exists() {
@@ -73,28 +148,7 @@ pub fn storage_delete_image(app: tauri::AppHandle, image_id: String) -> Result<(
 
 #[tauri::command]
 pub fn storage_read_image(app: tauri::AppHandle, image_id: String) -> Result<String, String> {
-    let images_dir = storage_root(&app)?.join("images");
-    for ext in &["jpg", "jpeg", "png", "gif", "webp"] {
-        let image_path = images_dir.join(format!("{}.{}", image_id, ext));
-        if image_path.exists() {
-            let bytes = fs::read(&image_path)
-                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-            let mime_type = match *ext {
-                "jpg" | "jpeg" => "image/jpeg",
-                "png" => "image/png",
-                "gif" => "image/gif",
-                "webp" => "image/webp",
-                _ => "image/png",
-            };
-            let base64_data = general_purpose::STANDARD.encode(&bytes);
-            return Ok(format!("data:{};base64,{}", mime_type, base64_data));
-        }
-    }
-    Err(crate::utils::err_msg(
-        module_path!(),
-        line!(),
-        format!("Image not found: {}", image_id),
-    ))
+    storage_read_image_data(&app, &image_id)
 }
 
 #[tauri::command]

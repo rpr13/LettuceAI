@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Camera } from "lucide-react";
 import { cn, radius, interactive } from "../../design-tokens";
+import { resolveImageGenerationOptions } from "../../../core/image-generation";
 import { readSettings } from "../../../core/storage/repo";
 import type { AvatarCrop } from "../../../core/storage/schemas";
 import { AvatarImage } from "../AvatarImage";
@@ -49,8 +50,7 @@ export function AvatarPicker({
     (async () => {
       try {
         const settings = await readSettings();
-        const imageModels = settings.models.filter((m) => m.outputScopes?.includes("image"));
-        setHasImageGenModels(imageModels.length > 0);
+        setHasImageGenModels(resolveImageGenerationOptions(settings).models.length > 0);
       } catch {
         setHasImageGenModels(false);
       }

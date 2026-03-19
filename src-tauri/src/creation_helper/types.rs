@@ -130,8 +130,11 @@ pub enum CreationGoal {
 #[serde(rename_all = "camelCase")]
 pub struct UploadedImage {
     pub id: String,
-    pub data: String, // base64
+    #[serde(default)]
+    pub data: String,
     pub mime_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asset_id: Option<String>,
 }
 
 /// System prompt info returned by get_system_prompt_list

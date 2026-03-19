@@ -102,13 +102,15 @@ pub async fn generate_image(
             .or(img_data.b64_json.as_ref())
             .ok_or_else(|| "No image URL or data in response".to_string())?;
 
-        let file_path = save_image(&app, image_source, None)?;
+        let saved = save_image(&app, image_source).await?;
 
         generated_images.push(GeneratedImage {
-            file_path,
+            asset_id: saved.asset_id,
+            file_path: saved.file_path,
+            mime_type: saved.mime_type,
             url: img_data.url,
-            width: None,
-            height: None,
+            width: saved.width,
+            height: saved.height,
             text: img_data.text,
         });
     }

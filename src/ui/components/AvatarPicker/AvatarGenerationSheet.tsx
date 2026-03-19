@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, Loader2, RefreshCw, Check, X, ChevronDown, HelpCircle } from "lucide-react";
-import { convertFileSrc } from "@tauri-apps/api/core";
 
 import { BottomMenu } from "../BottomMenu";
 import { cn, typography, radius, interactive } from "../../design-tokens";
@@ -10,6 +9,9 @@ import {
   generateImage,
   type ImageGenerationRequest,
   type GeneratedImage,
+  resolveGeneratedImageUrl,
+  resolveImageGenerationOptions,
+  resolveProviderCredential,
 } from "../../../core/image-generation";
 import { readSettings } from "../../../core/storage/repo";
 import type { Model, ProviderCredential } from "../../../core/storage/schemas";
@@ -31,6 +33,7 @@ export function AvatarGenerationSheet({
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generatedImage, setGeneratedImage] = useState<GeneratedImage | null>(null);
+  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
 
   const [models, setModels] = useState<Model[]>([]);
   const [providers, setProviders] = useState<ProviderCredential[]>([]);
@@ -46,23 +49,12 @@ export function AvatarGenerationSheet({
       try {
         setLoading(true);
         const settings = await readSettings();
-        const imageModels = settings.models.filter((m) => m.outputScopes?.includes("image"));
-        const providerCreds = settings.providerCredentials;
+        const options = resolveImageGenerationOptions(settings);
 
-        setModels(imageModels);
-        setProviders(providerCreds);
-
-        const firstModel = imageModels[0] ?? null;
-        const provider = firstModel
-          ? providerCreds.find(
-            (p) =>
-              p.providerId === firstModel.providerId &&
-              p.label === firstModel.providerLabel
-          ) ?? providerCreds.find((p) => p.providerId === firstModel.providerId) ?? null
-          : null;
-
-        setSelectedModel(firstModel);
-        setSelectedProvider(provider);
+        setModels(options.models);
+        setProviders(options.providers);
+        setSelectedModel(options.defaultModel);
+        setSelectedProvider(options.defaultProvider);
       } catch (err) {
         console.error("Failed to load models:", err);
         setError(t("components.avatarGeneration.modelsLoadError"));
@@ -76,22 +68,46 @@ export function AvatarGenerationSheet({
     if (!isOpen) {
       setPrompt("");
       setGeneratedImage(null);
+      setGeneratedImageUrl(null);
       setError(null);
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!generatedImage) {
+      setGeneratedImageUrl(null);
+      return;
+    }
+
+    void resolveGeneratedImageUrl(generatedImage)
+      .then((url) => {
+        if (!cancelled) {
+          setGeneratedImageUrl(url ?? null);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to resolve generated image:", err);
+        if (!cancelled) {
+          setGeneratedImageUrl(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [generatedImage]);
+
   const handleModelSelect = useCallback(
     (model: Model) => {
-      const provider =
-        providers.find(
-          (p) => p.providerId === model.providerId && p.label === model.providerLabel
-        ) ?? providers.find((p) => p.providerId === model.providerId) ?? null;
+      const provider = resolveProviderCredential(providers, model.providerId, model.providerLabel);
 
       setSelectedModel(model);
       setSelectedProvider(provider);
       setShowModelPicker(false);
     },
-    [providers]
+    [providers],
   );
 
   const handleGenerate = useCallback(async () => {
@@ -125,38 +141,29 @@ export function AvatarGenerationSheet({
   }, [selectedModel, selectedProvider, prompt]);
 
   const handleUseImage = useCallback(async () => {
-    if (!generatedImage) return;
+    if (!generatedImageUrl) return;
 
-    const imageSrc = generatedImage.url || (generatedImage.filePath ? convertFileSrc(generatedImage.filePath) : null);
-
-    if (imageSrc) {
-      try {
-        const response = await fetch(imageSrc);
-        const blob = await response.blob();
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const dataUrl = reader.result as string;
-          onImageGenerated(dataUrl);
-          onClose();
-        };
-        reader.readAsDataURL(blob);
-      } catch (err) {
-        console.warn("Failed to convert to data URL, using original:", err);
-        onImageGenerated(imageSrc);
+    try {
+      const response = await fetch(generatedImageUrl);
+      const blob = await response.blob();
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result as string;
+        onImageGenerated(dataUrl);
         onClose();
-      }
+      };
+      reader.readAsDataURL(blob);
+    } catch (err) {
+      console.warn("Failed to convert to data URL, using original:", err);
+      onImageGenerated(generatedImageUrl);
+      onClose();
     }
-  }, [generatedImage, onImageGenerated, onClose]);
+  }, [generatedImageUrl, onImageGenerated, onClose]);
 
   const handleRegenerate = useCallback(() => {
     setGeneratedImage(null);
     handleGenerate();
   }, [handleGenerate]);
-
-  const getImageSrc = useCallback(() => {
-    if (!generatedImage) return null;
-    return generatedImage.url || (generatedImage.filePath ? convertFileSrc(generatedImage.filePath) : null);
-  }, [generatedImage]);
 
   if (loading && isOpen) {
     return (
@@ -197,15 +204,20 @@ export function AvatarGenerationSheet({
                 "flex w-full items-center justify-between gap-2 border border-white/10 bg-white/5 px-4 py-3",
                 radius.md,
                 interactive.transition.default,
-                "hover:border-white/20 hover:bg-white/8 active:scale-[0.99]"
+                "hover:border-white/20 hover:bg-white/8 active:scale-[0.99]",
               )}
             >
               <span className={cn(typography.body.size, "text-white truncate")}>
-                {selectedModel?.displayName || selectedModel?.name || t("components.avatarGeneration.selectModel")}
+                {selectedModel?.displayName ||
+                  selectedModel?.name ||
+                  t("components.avatarGeneration.selectModel")}
               </span>
               <ChevronDown
                 size={18}
-                className={cn("text-white/50 transition-transform", showModelPicker && "rotate-180")}
+                className={cn(
+                  "text-white/50 transition-transform",
+                  showModelPicker && "rotate-180",
+                )}
               />
             </button>
 
@@ -218,7 +230,7 @@ export function AvatarGenerationSheet({
                   className={cn(
                     "absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-y-auto",
                     "border border-white/10 bg-[#0a0a0c]/95 backdrop-blur-xl",
-                    radius.md
+                    radius.md,
                   )}
                 >
                   {models.map((model) => (
@@ -229,7 +241,7 @@ export function AvatarGenerationSheet({
                         "flex w-full items-center gap-3 px-4 py-3 text-left",
                         interactive.transition.default,
                         "hover:bg-white/5",
-                        model.id === selectedModel?.id && "bg-emerald-500/10"
+                        model.id === selectedModel?.id && "bg-emerald-500/10",
                       )}
                     >
                       <div className="flex-1 truncate">
@@ -264,7 +276,7 @@ export function AvatarGenerationSheet({
               radius.md,
               typography.body.size,
               interactive.transition.default,
-              "focus:border-emerald-400/40 focus:bg-black/30 focus:outline-none"
+              "focus:border-emerald-400/40 focus:bg-black/30 focus:outline-none",
             )}
           />
         </div>
@@ -278,7 +290,7 @@ export function AvatarGenerationSheet({
               exit={{ opacity: 0, height: 0 }}
               className={cn(
                 "flex items-start gap-3 border border-red-400/30 bg-red-400/10 px-4 py-3",
-                radius.md
+                radius.md,
               )}
             >
               <X className="h-5 w-5 shrink-0 text-red-400" />
@@ -296,11 +308,13 @@ export function AvatarGenerationSheet({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className={cn(
-                "flex aspect-square w-full flex-col items-center justify-center gap-3 border border-white/10 bg-white/5 rounded-xl"
+                "flex aspect-square w-full flex-col items-center justify-center gap-3 border border-white/10 bg-white/5 rounded-xl",
               )}
             >
               <Loader2 className="h-10 w-10 animate-spin text-emerald-400" />
-              <p className={cn(typography.body.size, "text-white/50")}>{t("components.avatarGeneration.inProgress")}</p>
+              <p className={cn(typography.body.size, "text-white/50")}>
+                {t("components.avatarGeneration.inProgress")}
+              </p>
             </motion.div>
           ) : generatedImage ? (
             <motion.div
@@ -312,11 +326,11 @@ export function AvatarGenerationSheet({
             >
               <div
                 className={cn(
-                  "relative aspect-square w-full overflow-hidden border border-emerald-400/30 rounded-xl"
+                  "relative aspect-square w-full overflow-hidden border border-emerald-400/30 rounded-xl",
                 )}
               >
                 <img
-                  src={getImageSrc() || ""}
+                  src={generatedImageUrl || ""}
                   alt={t("components.avatarGeneration.alt")}
                   className="h-full w-full object-cover"
                 />
@@ -330,11 +344,13 @@ export function AvatarGenerationSheet({
                     "flex flex-1 items-center justify-center gap-2 border border-white/20 bg-black/60 py-2.5 backdrop-blur-sm",
                     radius.md,
                     interactive.transition.default,
-                    "hover:bg-black/70 active:scale-[0.98]"
+                    "hover:bg-black/70 active:scale-[0.98]",
                   )}
                 >
                   <RefreshCw size={16} className="text-white/70" />
-                  <span className="text-sm font-medium text-white">{t("components.avatarGeneration.regenerate")}</span>
+                  <span className="text-sm font-medium text-white">
+                    {t("components.avatarGeneration.regenerate")}
+                  </span>
                 </button>
                 <button
                   onClick={handleUseImage}
@@ -342,11 +358,13 @@ export function AvatarGenerationSheet({
                     "flex flex-1 items-center justify-center gap-2 border border-emerald-400/40 bg-emerald-500/80 py-2.5",
                     radius.md,
                     interactive.transition.default,
-                    "hover:bg-emerald-500/90 active:scale-[0.98]"
+                    "hover:bg-emerald-500/90 active:scale-[0.98]",
                   )}
                 >
                   <Check size={16} className="text-white" />
-                  <span className="text-sm font-semibold text-white">{t("components.avatarGeneration.useThis")}</span>
+                  <span className="text-sm font-semibold text-white">
+                    {t("components.avatarGeneration.useThis")}
+                  </span>
                 </button>
               </div>
             </motion.div>
@@ -364,7 +382,7 @@ export function AvatarGenerationSheet({
               interactive.transition.fast,
               prompt.trim() && selectedModel
                 ? "border border-emerald-400/40 bg-emerald-500/20 text-emerald-100 active:bg-emerald-500/30"
-                : "cursor-not-allowed border border-white/5 bg-white/5 text-white/30"
+                : "cursor-not-allowed border border-white/5 bg-white/5 text-white/30",
             )}
           >
             <Sparkles size={18} />

@@ -1,4 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import type { Model, ProviderCredential, Settings } from "../storage/schemas";
+import { convertToImageUrl } from "../storage/images";
 
 /**
  * Image generation request parameters
@@ -18,7 +21,9 @@ export interface ImageGenerationRequest {
  * Generated image result
  */
 export interface GeneratedImage {
+  assetId: string;
   filePath: string;
+  mimeType: string;
   url?: string;
   width?: number;
   height?: number;
@@ -38,7 +43,7 @@ export interface ImageGenerationResponse {
  * Generate images using the specified model and provider
  */
 export async function generateImage(
-  request: ImageGenerationRequest
+  request: ImageGenerationRequest,
 ): Promise<ImageGenerationResponse> {
   if (!request.prompt.trim()) {
     throw new Error("Prompt cannot be empty");
@@ -58,6 +63,59 @@ export async function generateImage(
   });
 }
 
+export interface ImageGenerationOptions {
+  models: Model[];
+  providers: ProviderCredential[];
+  defaultModel: Model | null;
+  defaultProvider: ProviderCredential | null;
+}
+
+export function resolveImageGenerationOptions(settings: Settings): ImageGenerationOptions {
+  const models = settings.models.filter((model) => model.outputScopes?.includes("image"));
+  const providers = settings.providerCredentials;
+  const defaultModel = models[0] ?? null;
+  const defaultProvider = defaultModel
+    ? resolveProviderCredential(providers, defaultModel.providerId, defaultModel.providerLabel)
+    : null;
+
+  return {
+    models,
+    providers,
+    defaultModel,
+    defaultProvider,
+  };
+}
+
+export function resolveProviderCredential(
+  providers: ProviderCredential[],
+  providerId: string,
+  providerLabel?: string | null,
+): ProviderCredential | null {
+  return (
+    providers.find(
+      (provider) => provider.providerId === providerId && provider.label === providerLabel,
+    ) ??
+    providers.find((provider) => provider.providerId === providerId) ??
+    null
+  );
+}
+
+export async function resolveGeneratedImageUrl(image: GeneratedImage): Promise<string | undefined> {
+  if (image.url?.startsWith("data:") || image.url?.startsWith("http")) {
+    return image.url;
+  }
+
+  if (image.assetId) {
+    return convertToImageUrl(image.assetId);
+  }
+
+  if (image.filePath) {
+    return convertFileSrc(image.filePath);
+  }
+
+  return undefined;
+}
+
 /**
  * Image generation model presets for common providers
  */
@@ -66,14 +124,22 @@ export const IMAGE_MODEL_PRESETS = {
     models: [
       { id: "dall-e-3", name: "DALL-E 3", sizes: ["1024x1024", "1024x1792", "1792x1024"] },
       { id: "dall-e-2", name: "DALL-E 2", sizes: ["256x256", "512x512", "1024x1024"] },
-      { id: "gpt-image-1", name: "GPT Image 1", sizes: ["1024x1024", "1024x1536", "1536x1024", "auto"] },
+      {
+        id: "gpt-image-1",
+        name: "GPT Image 1",
+        sizes: ["1024x1024", "1024x1536", "1536x1024", "auto"],
+      },
     ],
     qualities: ["standard", "hd"],
     styles: ["vivid", "natural"],
   },
   gemini: {
     models: [
-      { id: "gemini-2.0-flash-preview-image-generation", name: "Gemini 2.0 Flash (Image)", sizes: [] },
+      {
+        id: "gemini-2.0-flash-preview-image-generation",
+        name: "Gemini 2.0 Flash (Image)",
+        sizes: [],
+      },
       { id: "imagen-3.0-generate-002", name: "Imagen 3", sizes: ["1024x1024"] },
     ],
     qualities: [],
@@ -93,7 +159,7 @@ export const IMAGE_MODEL_PRESETS = {
 export function getModelSizes(providerId: string, modelId: string): readonly string[] {
   const provider = IMAGE_MODEL_PRESETS[providerId as keyof typeof IMAGE_MODEL_PRESETS];
   if (!provider) return ["1024x1024"];
-  
-  const model = provider.models.find(m => m.id === modelId);
+
+  const model = provider.models.find((m) => m.id === modelId);
   return model?.sizes ?? ["1024x1024"];
 }
