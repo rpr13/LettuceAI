@@ -384,13 +384,13 @@ function PromptEntryCard({
     <Reorder.Item
       id={`prompt-entry-row-${entry.id}`}
       value={entry}
-      layout
+      layout="position"
       dragListener={false}
       dragControls={controls}
+      dragMomentum={false}
+      dragElastic={0}
       whileDrag={{
         zIndex: 50,
-        scale: 1.025,
-        rotate: -0.4,
         boxShadow:
           "0 24px 48px rgba(0,0,0,0.45), 0 8px 16px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.08)",
       }}
@@ -494,115 +494,129 @@ function PromptEntryCard({
         </div>
       </div>
 
-      {!collapsed && (
-        <div className="space-y-3">
-          <div className="grid gap-2 md:grid-cols-3">
-            <select
-              value={entry.role}
-              onChange={(event) => onUpdate(entry.id, { role: event.target.value as any })}
-              className="h-9 w-full rounded-lg border border-fg/10 bg-surface-el/30 px-2.5 text-xs text-fg"
-            >
-              {ENTRY_ROLE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={entry.injectionPosition}
-              onChange={(event) => {
-                const nextPosition = event.target.value as SystemPromptEntry["injectionPosition"];
-                onUpdate(entry.id, {
-                  injectionPosition: nextPosition,
-                  conditionalMinMessages:
-                    nextPosition === "conditional"
-                      ? (entry.conditionalMinMessages ?? DEFAULT_CONDITIONAL_MIN_MESSAGES)
-                      : (entry.conditionalMinMessages ?? null),
-                  intervalTurns:
-                    nextPosition === "interval"
-                      ? (entry.intervalTurns ?? DEFAULT_INTERVAL_TURNS)
-                      : (entry.intervalTurns ?? null),
-                });
-              }}
-              className="h-9 w-full rounded-lg border border-fg/10 bg-surface-el/30 px-2.5 text-xs text-fg"
-            >
-              {ENTRY_POSITION_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-
-            {entry.injectionPosition !== "relative" && (
-              <div className="flex items-center gap-2">
-                <span className="shrink-0 text-[11px] text-fg/50">Depth</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={entry.injectionDepth}
-                  onChange={(event) =>
-                    onUpdate(entry.id, { injectionDepth: Number(event.target.value) })
-                  }
+      <AnimatePresence initial={false}>
+        {!collapsed && (
+          <motion.div
+            key={`prompt-entry-body-${entry.id}`}
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            className="overflow-hidden"
+          >
+            <div className="space-y-3 pt-0.5">
+              <div className="grid gap-2 md:grid-cols-3">
+                <select
+                  value={entry.role}
+                  onChange={(event) => onUpdate(entry.id, { role: event.target.value as any })}
                   className="h-9 w-full rounded-lg border border-fg/10 bg-surface-el/30 px-2.5 text-xs text-fg"
-                  placeholder="0"
-                  title="Insertion Depth"
-                  aria-label="Insertion Depth"
-                />
+                >
+                  {ENTRY_ROLE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={entry.injectionPosition}
+                  onChange={(event) => {
+                    const nextPosition = event.target
+                      .value as SystemPromptEntry["injectionPosition"];
+                    onUpdate(entry.id, {
+                      injectionPosition: nextPosition,
+                      conditionalMinMessages:
+                        nextPosition === "conditional"
+                          ? (entry.conditionalMinMessages ?? DEFAULT_CONDITIONAL_MIN_MESSAGES)
+                          : (entry.conditionalMinMessages ?? null),
+                      intervalTurns:
+                        nextPosition === "interval"
+                          ? (entry.intervalTurns ?? DEFAULT_INTERVAL_TURNS)
+                          : (entry.intervalTurns ?? null),
+                    });
+                  }}
+                  className="h-9 w-full rounded-lg border border-fg/10 bg-surface-el/30 px-2.5 text-xs text-fg"
+                >
+                  {ENTRY_POSITION_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+
+                {entry.injectionPosition !== "relative" && (
+                  <div className="flex items-center gap-2">
+                    <span className="shrink-0 text-[11px] text-fg/50">Depth</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={entry.injectionDepth}
+                      onChange={(event) =>
+                        onUpdate(entry.id, { injectionDepth: Number(event.target.value) })
+                      }
+                      className="h-9 w-full rounded-lg border border-fg/10 bg-surface-el/30 px-2.5 text-xs text-fg"
+                      placeholder="0"
+                      title="Insertion Depth"
+                      aria-label="Insertion Depth"
+                    />
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          <p className="text-[11px] text-fg/50">{getInjectionModeHint(entry.injectionPosition)}</p>
+              <p className="text-[11px] text-fg/50">
+                {getInjectionModeHint(entry.injectionPosition)}
+              </p>
 
-          {entry.injectionPosition === "conditional" && (
-            <div className="space-y-1">
-              <p className="text-[11px] text-fg/50">Min Messages</p>
-              <input
-                type="number"
-                min={1}
-                value={entry.conditionalMinMessages ?? DEFAULT_CONDITIONAL_MIN_MESSAGES}
-                onChange={(event) =>
-                  onUpdate(entry.id, {
-                    conditionalMinMessages: Math.max(1, Number(event.target.value) || 1),
-                  })
-                }
-                className="h-9 w-full rounded-lg border border-fg/10 bg-surface-el/30 px-2.5 text-xs text-fg"
-                placeholder="Inject after at least N messages"
+              {entry.injectionPosition === "conditional" && (
+                <div className="space-y-1">
+                  <p className="text-[11px] text-fg/50">Min Messages</p>
+                  <input
+                    type="number"
+                    min={1}
+                    value={entry.conditionalMinMessages ?? DEFAULT_CONDITIONAL_MIN_MESSAGES}
+                    onChange={(event) =>
+                      onUpdate(entry.id, {
+                        conditionalMinMessages: Math.max(1, Number(event.target.value) || 1),
+                      })
+                    }
+                    className="h-9 w-full rounded-lg border border-fg/10 bg-surface-el/30 px-2.5 text-xs text-fg"
+                    placeholder="Inject after at least N messages"
+                  />
+                </div>
+              )}
+
+              {entry.injectionPosition === "interval" && (
+                <div className="space-y-1">
+                  <p className="text-[11px] text-fg/50">Every N Messages</p>
+                  <input
+                    type="number"
+                    min={1}
+                    value={entry.intervalTurns ?? DEFAULT_INTERVAL_TURNS}
+                    onChange={(event) =>
+                      onUpdate(entry.id, {
+                        intervalTurns: Math.max(1, Number(event.target.value) || 1),
+                      })
+                    }
+                    className="h-9 w-full rounded-lg border border-fg/10 bg-surface-el/30 px-2.5 text-xs text-fg"
+                    placeholder="Inject every N messages"
+                  />
+                </div>
+              )}
+
+              <textarea
+                ref={(el) => {
+                  onTextareaRef(entry.id, el);
+                }}
+                value={entry.content}
+                onChange={(event) => onUpdate(entry.id, { content: event.target.value })}
+                onFocus={() => onTextareaFocus(entry.id)}
+                rows={6}
+                className="w-full resize-none rounded-xl border border-fg/10 bg-surface-el/30 px-3.5 py-2.5 font-mono text-sm leading-relaxed text-fg placeholder-fg/30"
+                placeholder="Write the prompt entry..."
               />
             </div>
-          )}
-
-          {entry.injectionPosition === "interval" && (
-            <div className="space-y-1">
-              <p className="text-[11px] text-fg/50">Every N Messages</p>
-              <input
-                type="number"
-                min={1}
-                value={entry.intervalTurns ?? DEFAULT_INTERVAL_TURNS}
-                onChange={(event) =>
-                  onUpdate(entry.id, {
-                    intervalTurns: Math.max(1, Number(event.target.value) || 1),
-                  })
-                }
-                className="h-9 w-full rounded-lg border border-fg/10 bg-surface-el/30 px-2.5 text-xs text-fg"
-                placeholder="Inject every N messages"
-              />
-            </div>
-          )}
-
-          <textarea
-            ref={(el) => {
-              onTextareaRef(entry.id, el);
-            }}
-            value={entry.content}
-            onChange={(event) => onUpdate(entry.id, { content: event.target.value })}
-            onFocus={() => onTextareaFocus(entry.id)}
-            rows={6}
-            className="w-full resize-none rounded-xl border border-fg/10 bg-surface-el/30 px-3.5 py-2.5 font-mono text-sm leading-relaxed text-fg placeholder-fg/30"
-            placeholder="Write the prompt entry..."
-          />
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </Reorder.Item>
   );
 }
@@ -699,10 +713,10 @@ function PromptEntryListItem({
       layout
       dragListener={false}
       dragControls={controls}
+      dragMomentum={false}
+      dragElastic={0}
       whileDrag={{
         zIndex: 50,
-        scale: 1.025,
-        rotate: -0.4,
         boxShadow:
           "0 24px 48px rgba(0,0,0,0.45), 0 8px 16px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.08)",
       }}
