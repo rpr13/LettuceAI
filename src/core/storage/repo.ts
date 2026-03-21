@@ -155,6 +155,59 @@ function cloneSessionMemoryToolEvent(event: SessionMemoryToolEvent): SessionMemo
   };
 }
 
+function remapSessionMemoryToolEvents(
+  events: SessionMemoryToolEvent[],
+  messageIdMap: Map<string, string>,
+): SessionMemoryToolEvent[] {
+  return events.map((event) => {
+    const remappedWindowMessageIds = event.windowMessageIds
+      ?.map((messageId) => messageIdMap.get(messageId))
+      .filter((messageId): messageId is string => typeof messageId === "string");
+
+    return {
+      ...event,
+      windowMessageIds:
+        remappedWindowMessageIds && remappedWindowMessageIds.length > 0
+          ? remappedWindowMessageIds
+          : undefined,
+    };
+  });
+}
+
+function cloneBranchedMessages(
+  sourceMessages: StoredMessage[],
+  options?: { excludeRoles?: string[] },
+): { messages: StoredMessage[]; messageIdMap: Map<string, string> } {
+  const excludedRoles = new Set(options?.excludeRoles ?? []);
+  const messageIdMap = new Map<string, string>();
+
+  const messages = sourceMessages
+    .filter((msg) => !excludedRoles.has(msg.role))
+    .map((msg) => {
+      const newVariants = msg.variants?.map((v) => ({
+        ...v,
+        id: globalThis.crypto?.randomUUID?.() ?? uuidv4(),
+      }));
+
+      const newSelectedVariantId =
+        msg.selectedVariantId && msg.variants
+          ? newVariants?.[msg.variants.findIndex((v) => v.id === msg.selectedVariantId)]?.id
+          : undefined;
+      const newMessageId = globalThis.crypto?.randomUUID?.() ?? uuidv4();
+      messageIdMap.set(msg.id, newMessageId);
+
+      return {
+        ...msg,
+        id: newMessageId,
+        createdAt: msg.createdAt,
+        variants: newVariants,
+        selectedVariantId: newSelectedVariantId,
+      };
+    });
+
+  return { messages, messageIdMap };
+}
+
 function countConversationMessagesUpTo(messages: StoredMessage[], messageIndex: number): number {
   return messages
     .slice(0, messageIndex + 1)
@@ -236,6 +289,7 @@ function buildMemoryFromCreateAction(
 function resolveBranchedDynamicMemoryState(
   sourceSession: Session,
   branchMessageIndex: number,
+  messageIdMap?: Map<string, string>,
 ): Pick<
   Session,
   | "memoryEmbeddings"
@@ -264,8 +318,12 @@ function resolveBranchedDynamicMemoryState(
   const keptEvents = sourceEvents
     .filter((event) => (event.windowEnd ?? 0) <= branchConversationCount)
     .map(cloneSessionMemoryToolEvent);
+  const remappedEvents =
+    messageIdMap && keptEvents.length > 0
+      ? remapSessionMemoryToolEvents(keptEvents, messageIdMap)
+      : keptEvents;
 
-  if (keptEvents.length === 0) {
+  if (remappedEvents.length === 0) {
     return {
       memoryEmbeddings: [],
       memorySummary: "",
@@ -281,7 +339,7 @@ function resolveBranchedDynamicMemoryState(
   );
   const activeMemories = new Map<string, SessionMemoryEmbedding>();
 
-  for (const event of keptEvents) {
+  for (const event of remappedEvents) {
     for (const action of event.actions ?? []) {
       if (action.name === "create_memory") {
         const memory = buildMemoryFromCreateAction(action, sourceMemoryById);
@@ -334,7 +392,7 @@ function resolveBranchedDynamicMemoryState(
     }
   }
 
-  const lastKeptEvent = keptEvents[keptEvents.length - 1];
+  const lastKeptEvent = remappedEvents[remappedEvents.length - 1];
   const memorySummary = lastKeptEvent.summary ?? "";
   const memorySummaryTokenCount =
     memorySummary === (sourceSession.memorySummary ?? "")
@@ -345,7 +403,7 @@ function resolveBranchedDynamicMemoryState(
     memoryEmbeddings: Array.from(activeMemories.values()),
     memorySummary,
     memorySummaryTokenCount,
-    memoryToolEvents: keptEvents,
+    memoryToolEvents: remappedEvents,
     memoryStatus: lastKeptEvent.error ? "failed" : "idle",
     memoryError: lastKeptEvent.error,
   };
@@ -958,27 +1016,14 @@ export async function createBranchedSession(
   const id = globalThis.crypto?.randomUUID?.() ?? uuidv4();
   const timestamp = now();
 
-  const branchedMessages: StoredMessage[] = sourceSession.messages
-    .slice(0, messageIndex + 1)
-    .map((msg) => {
-      const newVariants = msg.variants?.map((v) => ({
-        ...v,
-        id: globalThis.crypto?.randomUUID?.() ?? uuidv4(),
-      }));
-
-      const newSelectedVariantId =
-        msg.selectedVariantId && msg.variants
-          ? newVariants?.[msg.variants.findIndex((v) => v.id === msg.selectedVariantId)]?.id
-          : undefined;
-      return {
-        ...msg,
-        id: globalThis.crypto?.randomUUID?.() ?? uuidv4(),
-        createdAt: msg.createdAt,
-        variants: newVariants,
-        selectedVariantId: newSelectedVariantId,
-      };
-    });
-  const branchedDynamicMemoryState = resolveBranchedDynamicMemoryState(sourceSession, messageIndex);
+  const { messages: branchedMessages, messageIdMap } = cloneBranchedMessages(
+    sourceSession.messages.slice(0, messageIndex + 1),
+  );
+  const branchedDynamicMemoryState = resolveBranchedDynamicMemoryState(
+    sourceSession,
+    messageIndex,
+    messageIdMap,
+  );
 
   const s: Session = {
     id,
@@ -1022,28 +1067,15 @@ export async function createBranchedSessionToCharacter(
   const id = globalThis.crypto?.randomUUID?.() ?? uuidv4();
   const timestamp = now();
 
-  const branchedMessages: StoredMessage[] = sourceSession.messages
-    .slice(0, messageIndex + 1)
-    .filter((msg) => msg.role !== "scene")
-    .map((msg) => {
-      const newVariants = msg.variants?.map((v) => ({
-        ...v,
-        id: globalThis.crypto?.randomUUID?.() ?? uuidv4(),
-      }));
-
-      const newSelectedVariantId =
-        msg.selectedVariantId && msg.variants
-          ? newVariants?.[msg.variants.findIndex((v) => v.id === msg.selectedVariantId)]?.id
-          : undefined;
-      return {
-        ...msg,
-        id: globalThis.crypto?.randomUUID?.() ?? uuidv4(),
-        createdAt: msg.createdAt,
-        variants: newVariants,
-        selectedVariantId: newSelectedVariantId,
-      };
-    });
-  const branchedDynamicMemoryState = resolveBranchedDynamicMemoryState(sourceSession, messageIndex);
+  const { messages: branchedMessages, messageIdMap } = cloneBranchedMessages(
+    sourceSession.messages.slice(0, messageIndex + 1),
+    { excludeRoles: ["scene"] },
+  );
+  const branchedDynamicMemoryState = resolveBranchedDynamicMemoryState(
+    sourceSession,
+    messageIndex,
+    messageIdMap,
+  );
 
   const s: Session = {
     id,
@@ -1098,11 +1130,14 @@ export async function createBranchedGroupSession(
   const groupSession = GroupSessionSchema.parse(await storageBridge.groupCreateSession(group.id));
 
   const messagesToCopy = sourceSession.messages.slice(0, messageIndex + 1);
+  const messageIdMap = new Map<string, string>();
   for (const message of messagesToCopy) {
     if (message.role !== "user" && message.role !== "assistant") continue;
+    const newMessageId = globalThis.crypto?.randomUUID?.() ?? uuidv4();
+    messageIdMap.set(message.id, newMessageId);
 
     await storageBridge.groupMessageUpsert(groupSession.id, {
-      id: globalThis.crypto?.randomUUID?.() ?? uuidv4(),
+      id: newMessageId,
       sessionId: groupSession.id,
       role: message.role,
       content: message.content,
@@ -1118,7 +1153,11 @@ export async function createBranchedGroupSession(
     });
   }
 
-  const branchedDynamicMemoryState = resolveBranchedDynamicMemoryState(sourceSession, messageIndex);
+  const branchedDynamicMemoryState = resolveBranchedDynamicMemoryState(
+    sourceSession,
+    messageIndex,
+    messageIdMap,
+  );
   const shouldUseDynamicMemory = hasDynamicMemoryState(branchedDynamicMemoryState);
 
   if (shouldUseDynamicMemory) {
