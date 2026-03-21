@@ -1,6 +1,8 @@
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::io::Read;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
@@ -108,6 +110,18 @@ pub struct HfModelFile {
     pub filename: String,
     pub size: u64,
     pub quantization: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadedGgufModel {
+    pub model_id: String,
+    pub filename: String,
+    pub path: String,
+    pub size: u64,
+    pub quantization: String,
+    pub architecture: Option<String>,
+    pub context_length: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -557,6 +571,28 @@ fn parse_gguf_meta(data: &[u8]) -> Option<GgufModelMeta> {
     meta.parsed_kv_count = parsed;
 
     Some(meta)
+}
+
+fn read_local_gguf_meta(path: &Path) -> Option<GgufModelMeta> {
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut primary = vec![0u8; 524_288];
+    let primary_read = file.read(&mut primary).ok()?;
+    primary.truncate(primary_read);
+
+    let primary_meta = parse_gguf_meta(&primary);
+    if primary_meta
+        .as_ref()
+        .is_some_and(|meta| meta.parsed_kv_count >= meta.metadata_kv_count)
+    {
+        return primary_meta;
+    }
+
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut fallback = vec![0u8; 5_242_880];
+    let fallback_read = file.read(&mut fallback).ok()?;
+    fallback.truncate(fallback_read);
+
+    parse_gguf_meta(&fallback).or(primary_meta)
 }
 
 // Runability scoring
@@ -1726,7 +1762,7 @@ async fn do_queue_download(
 }
 
 #[tauri::command]
-pub async fn hf_list_downloaded_models(app: AppHandle) -> Result<Vec<serde_json::Value>, String> {
+pub async fn hf_list_downloaded_models(app: AppHandle) -> Result<Vec<DownloadedGgufModel>, String> {
     let models_dir = hf_models_dir(&app)?;
 
     let mut results = Vec::new();
@@ -1762,13 +1798,16 @@ pub async fn hf_list_downloaded_models(app: AppHandle) -> Result<Vec<serde_json:
 
                 if fname.to_lowercase().ends_with(".gguf") && !fname.ends_with(".tmp") {
                     let size = file_entry.metadata().map(|m| m.len()).unwrap_or(0);
-                    results.push(serde_json::json!({
-                        "modelId": dir_name.replace("--", "/"),
-                        "filename": fname,
-                        "path": file_path.to_string_lossy(),
-                        "size": size,
-                        "quantization": extract_quantization(&fname),
-                    }));
+                    let meta = read_local_gguf_meta(&file_path);
+                    results.push(DownloadedGgufModel {
+                        model_id: dir_name.replace("--", "/"),
+                        filename: fname,
+                        path: file_path.to_string_lossy().to_string(),
+                        size,
+                        quantization: extract_quantization(&file_path.to_string_lossy()),
+                        architecture: meta.as_ref().and_then(|value| value.architecture.clone()),
+                        context_length: meta.as_ref().and_then(|value| value.context_length),
+                    });
                 }
             }
         }

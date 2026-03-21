@@ -60,6 +60,7 @@ export const Routes = {
   settingsModels: "/settings/models",
   settingsModelsNew: "/settings/models/new",
   settingsModelsBrowse: "/settings/models/browse",
+  settingsModelsInstalled: "/settings/models/installed",
   settingsModel: (modelId: string) => `/settings/models/${modelId}`,
   settingsImageGeneration: "/settings/image-generation",
   characterLorebook: (characterId: string) => `/settings/characters/${characterId}/lorebook`,

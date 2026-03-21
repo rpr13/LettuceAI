@@ -9,6 +9,7 @@ import {
   Check,
   Loader2,
   HelpCircle,
+  HardDrive,
   LayoutList,
   LayoutGrid,
   Grid3X3,
@@ -42,6 +43,7 @@ export function TopNav({ currentPath, onBackOverride, titleOverride, rightAction
     }> = [
       { match: (p) => p === "/settings/providers", titleKey: "common.nav.providers" },
       { match: (p) => p.includes("view=advanced"), titleKey: "common.nav.responseStyle" },
+      { match: (p) => p === "/settings/models/installed", titleKey: "hfBrowser.libraryTitle" },
       { match: (p) => p === "/settings/models/browse", titleKey: "hfBrowser.title" },
       {
         match: (p) => p === "/settings/models" || p.startsWith("/settings/models/"),
@@ -215,6 +217,11 @@ export function TopNav({ currentPath, onBackOverride, titleOverride, rightAction
     () =>
       basePath === "/settings/models" ||
       /^\/settings\/characters\/[^/]+\/templates$/.test(basePath),
+    [basePath],
+  );
+
+  const showInstalledModelsButton = useMemo(
+    () => basePath === "/settings/models/browse",
     [basePath],
   );
 
@@ -583,6 +590,21 @@ export function TopNav({ currentPath, onBackOverride, titleOverride, rightAction
               aria-label={t("topNav.help")}
             >
               <HelpCircle size={20} strokeWidth={2.5} className="text-fg/50" />
+            </button>
+          )}
+          {showInstalledModelsButton && (
+            <button
+              onClick={() => navigate("/settings/models/installed")}
+              className={cn(
+                "flex items-center px-[0.6em] py-[0.3em] justify-center rounded-full",
+                "text-fg/70 hover:text-fg hover:bg-fg/10",
+                interactive.transition.fast,
+                interactive.active.scale,
+              )}
+              aria-label="Installed Models"
+              title="Installed Models"
+            >
+              <HardDrive size={18} strokeWidth={2.2} className="text-fg/75" />
             </button>
           )}
           {showImportButton && (
