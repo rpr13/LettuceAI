@@ -1059,13 +1059,7 @@ fn build_ollama_extra_fields(
     session: &Session,
     model: &Model,
     settings: &Settings,
-    context_length: Option<u32>,
-    max_tokens: u32,
-    temperature: f64,
-    top_p: f64,
-    top_k: Option<u32>,
-    frequency_penalty: Option<f64>,
-    presence_penalty: Option<f64>,
+    request_settings: &RequestSettings,
 ) -> Option<HashMap<String, Value>> {
     let mut options = Map::new();
 
@@ -1080,7 +1074,7 @@ fn build_ollama_extra_fields(
                 .and_then(|cfg| cfg.ollama_num_ctx)
         })
         .or(settings.advanced_model_settings.ollama_num_ctx)
-        .or(context_length);
+        .or(request_settings.context_length);
     let num_predict = session
         .advanced_model_settings
         .as_ref()
@@ -1092,7 +1086,7 @@ fn build_ollama_extra_fields(
                 .and_then(|cfg| cfg.ollama_num_predict)
         })
         .or(settings.advanced_model_settings.ollama_num_predict)
-        .or(Some(max_tokens));
+        .or(Some(request_settings.max_tokens));
     let num_keep = session
         .advanced_model_settings
         .as_ref()
@@ -1237,15 +1231,15 @@ fn build_ollama_extra_fields(
         })
         .or(settings.advanced_model_settings.ollama_stop.clone());
 
-    options.insert("temperature".into(), json!(temperature));
-    options.insert("top_p".into(), json!(top_p));
-    if let Some(v) = top_k {
+    options.insert("temperature".into(), json!(request_settings.temperature));
+    options.insert("top_p".into(), json!(request_settings.top_p));
+    if let Some(v) = request_settings.top_k {
         options.insert("top_k".into(), json!(v));
     }
-    if let Some(v) = frequency_penalty {
+    if let Some(v) = request_settings.frequency_penalty {
         options.insert("frequency_penalty".into(), json!(v));
     }
-    if let Some(v) = presence_penalty {
+    if let Some(v) = request_settings.presence_penalty {
         options.insert("presence_penalty".into(), json!(v));
     }
     if let Some(v) = num_ctx {
@@ -1359,6 +1353,82 @@ fn resolve_reasoning_budget(
         "high" => 16384,
         _ => 4096, // default fallback
     })
+}
+
+#[derive(Clone, Debug)]
+struct RequestSettings {
+    temperature: f64,
+    top_p: f64,
+    max_tokens: u32,
+    context_length: Option<u32>,
+    frequency_penalty: Option<f64>,
+    presence_penalty: Option<f64>,
+    top_k: Option<u32>,
+    reasoning_enabled: bool,
+    reasoning_effort: Option<String>,
+    reasoning_budget: Option<u32>,
+}
+
+impl RequestSettings {
+    fn resolve(session: &Session, model: &Model, settings: &Settings) -> Self {
+        let reasoning_effort = resolve_reasoning_effort(session, model, settings);
+        Self {
+            temperature: resolve_temperature(session, model, settings),
+            top_p: resolve_top_p(session, model, settings),
+            max_tokens: resolve_max_tokens(session, model, settings),
+            context_length: resolve_context_length(session, model, settings),
+            frequency_penalty: resolve_frequency_penalty(session, model, settings),
+            presence_penalty: resolve_presence_penalty(session, model, settings),
+            top_k: resolve_top_k(session, model, settings),
+            reasoning_enabled: resolve_reasoning_enabled(session, model, settings),
+            reasoning_budget: resolve_reasoning_budget(
+                session,
+                model,
+                settings,
+                reasoning_effort.as_deref(),
+            ),
+            reasoning_effort,
+        }
+    }
+
+    fn for_sampling(
+        context_length: Option<u32>,
+        max_tokens: u32,
+        temperature: f64,
+        top_p: f64,
+        top_k: Option<u32>,
+        frequency_penalty: Option<f64>,
+        presence_penalty: Option<f64>,
+    ) -> Self {
+        Self {
+            temperature,
+            top_p,
+            max_tokens,
+            context_length,
+            frequency_penalty,
+            presence_penalty,
+            top_k,
+            reasoning_enabled: false,
+            reasoning_effort: None,
+            reasoning_budget: None,
+        }
+    }
+}
+
+fn build_provider_extra_fields(
+    provider_id: &str,
+    session: &Session,
+    model: &Model,
+    settings: &Settings,
+    request_settings: &RequestSettings,
+) -> Option<HashMap<String, Value>> {
+    if provider_id == "llamacpp" {
+        build_llama_extra_fields(session, model, settings)
+    } else if provider_id == "ollama" {
+        build_ollama_extra_fields(session, model, settings, request_settings)
+    } else {
+        None
+    }
 }
 
 async fn select_relevant_memories(
@@ -2144,48 +2214,23 @@ pub async fn chat_completion(
             }
         };
 
-        let temperature = resolve_temperature(&session, attempt_model, &settings);
-        let top_p = resolve_top_p(&session, attempt_model, &settings);
-        let max_tokens = resolve_max_tokens(&session, attempt_model, &settings);
-        let context_length = resolve_context_length(&session, attempt_model, &settings);
-        let frequency_penalty = resolve_frequency_penalty(&session, attempt_model, &settings);
-        let presence_penalty = resolve_presence_penalty(&session, attempt_model, &settings);
-        let top_k = resolve_top_k(&session, attempt_model, &settings);
-        let reasoning_enabled = resolve_reasoning_enabled(&session, attempt_model, &settings);
-        let reasoning_effort = resolve_reasoning_effort(&session, attempt_model, &settings);
-        let reasoning_budget = resolve_reasoning_budget(
+        let request_settings = RequestSettings::resolve(&session, attempt_model, &settings);
+        let extra_body_fields = build_provider_extra_fields(
+            &attempt_provider_cred.provider_id,
             &session,
             attempt_model,
             &settings,
-            reasoning_effort.as_deref(),
+            &request_settings,
         );
-        let extra_body_fields = if attempt_provider_cred.provider_id == "llamacpp" {
-            build_llama_extra_fields(&session, attempt_model, &settings)
-        } else if attempt_provider_cred.provider_id == "ollama" {
-            build_ollama_extra_fields(
-                &session,
-                attempt_model,
-                &settings,
-                context_length,
-                max_tokens,
-                temperature,
-                top_p,
-                top_k,
-                frequency_penalty,
-                presence_penalty,
-            )
-        } else {
-            None
-        };
 
         log_info(
             &app,
             "chat_completion",
             format!(
                 "reasoning settings: enabled={} effort={:?} budget={:?} model_adv={:?}",
-                reasoning_enabled,
-                reasoning_effort,
-                reasoning_budget,
+                request_settings.reasoning_enabled,
+                request_settings.reasoning_effort,
+                request_settings.reasoning_budget,
                 attempt_model
                     .advanced_model_settings
                     .as_ref()
@@ -2199,19 +2244,19 @@ pub async fn chat_completion(
             &attempt_model.name,
             &messages_for_api,
             None,
-            temperature,
-            top_p,
-            max_tokens,
-            context_length,
+            request_settings.temperature,
+            request_settings.top_p,
+            request_settings.max_tokens,
+            request_settings.context_length,
             should_stream,
             request_id.clone(),
-            frequency_penalty,
-            presence_penalty,
-            top_k,
+            request_settings.frequency_penalty,
+            request_settings.presence_penalty,
+            request_settings.top_k,
             None,
-            reasoning_enabled,
-            reasoning_effort,
-            reasoning_budget,
+            request_settings.reasoning_enabled,
+            request_settings.reasoning_effort.clone(),
+            request_settings.reasoning_budget,
             extra_body_fields,
         );
 
@@ -2236,7 +2281,7 @@ pub async fn chat_completion(
                 built.body.get("reasoning_effort"),
                 built.body.get("reasoning").and_then(|r| r.get("max_tokens")),
                 built.body.get("max_completion_tokens").or(built.body.get("max_tokens")),
-                reasoning_enabled
+                request_settings.reasoning_enabled
             ),
         );
 
@@ -3004,39 +3049,14 @@ pub async fn chat_regenerate(
             }
         };
 
-        let temperature = resolve_temperature(&session, attempt_model, &settings);
-        let top_p = resolve_top_p(&session, attempt_model, &settings);
-        let max_tokens = resolve_max_tokens(&session, attempt_model, &settings);
-        let context_length = resolve_context_length(&session, attempt_model, &settings);
-        let frequency_penalty = resolve_frequency_penalty(&session, attempt_model, &settings);
-        let presence_penalty = resolve_presence_penalty(&session, attempt_model, &settings);
-        let top_k = resolve_top_k(&session, attempt_model, &settings);
-        let reasoning_enabled = resolve_reasoning_enabled(&session, attempt_model, &settings);
-        let reasoning_effort = resolve_reasoning_effort(&session, attempt_model, &settings);
-        let reasoning_budget = resolve_reasoning_budget(
+        let request_settings = RequestSettings::resolve(&session, attempt_model, &settings);
+        let extra_body_fields = build_provider_extra_fields(
+            &attempt_provider_cred.provider_id,
             &session,
             attempt_model,
             &settings,
-            reasoning_effort.as_deref(),
+            &request_settings,
         );
-        let extra_body_fields = if attempt_provider_cred.provider_id == "llamacpp" {
-            build_llama_extra_fields(&session, attempt_model, &settings)
-        } else if attempt_provider_cred.provider_id == "ollama" {
-            build_ollama_extra_fields(
-                &session,
-                attempt_model,
-                &settings,
-                context_length,
-                max_tokens,
-                temperature,
-                top_p,
-                top_k,
-                frequency_penalty,
-                presence_penalty,
-            )
-        } else {
-            None
-        };
 
         let built = super::request_builder::build_chat_request(
             attempt_provider_cred,
@@ -3044,19 +3064,19 @@ pub async fn chat_regenerate(
             &attempt_model.name,
             &messages_for_api,
             None,
-            temperature,
-            top_p,
-            max_tokens,
-            context_length,
+            request_settings.temperature,
+            request_settings.top_p,
+            request_settings.max_tokens,
+            request_settings.context_length,
             should_stream,
             request_id.clone(),
-            frequency_penalty,
-            presence_penalty,
-            top_k,
+            request_settings.frequency_penalty,
+            request_settings.presence_penalty,
+            request_settings.top_k,
             None,
-            reasoning_enabled,
-            reasoning_effort,
-            reasoning_budget,
+            request_settings.reasoning_enabled,
+            request_settings.reasoning_effort.clone(),
+            request_settings.reasoning_budget,
             extra_body_fields,
         );
 
@@ -3670,39 +3690,14 @@ pub async fn chat_continue(
             }
         };
 
-        let temperature = resolve_temperature(&session, attempt_model, &settings);
-        let top_p = resolve_top_p(&session, attempt_model, &settings);
-        let max_tokens = resolve_max_tokens(&session, attempt_model, &settings);
-        let context_length = resolve_context_length(&session, attempt_model, &settings);
-        let frequency_penalty = resolve_frequency_penalty(&session, attempt_model, &settings);
-        let presence_penalty = resolve_presence_penalty(&session, attempt_model, &settings);
-        let top_k = resolve_top_k(&session, attempt_model, &settings);
-        let reasoning_enabled = resolve_reasoning_enabled(&session, attempt_model, &settings);
-        let reasoning_effort = resolve_reasoning_effort(&session, attempt_model, &settings);
-        let reasoning_budget = resolve_reasoning_budget(
+        let request_settings = RequestSettings::resolve(&session, attempt_model, &settings);
+        let extra_body_fields = build_provider_extra_fields(
+            &attempt_provider_cred.provider_id,
             &session,
             attempt_model,
             &settings,
-            reasoning_effort.as_deref(),
+            &request_settings,
         );
-        let extra_body_fields = if attempt_provider_cred.provider_id == "llamacpp" {
-            build_llama_extra_fields(&session, attempt_model, &settings)
-        } else if attempt_provider_cred.provider_id == "ollama" {
-            build_ollama_extra_fields(
-                &session,
-                attempt_model,
-                &settings,
-                context_length,
-                max_tokens,
-                temperature,
-                top_p,
-                top_k,
-                frequency_penalty,
-                presence_penalty,
-            )
-        } else {
-            None
-        };
 
         let built = super::request_builder::build_chat_request(
             attempt_provider_cred,
@@ -3710,19 +3705,19 @@ pub async fn chat_continue(
             &attempt_model.name,
             &messages_for_api,
             None,
-            temperature,
-            top_p,
-            max_tokens,
-            context_length,
+            request_settings.temperature,
+            request_settings.top_p,
+            request_settings.max_tokens,
+            request_settings.context_length,
             should_stream,
             request_id.clone(),
-            frequency_penalty,
-            presence_penalty,
-            top_k,
+            request_settings.frequency_penalty,
+            request_settings.presence_penalty,
+            request_settings.top_k,
             None,
-            reasoning_enabled,
-            reasoning_effort,
-            reasoning_budget,
+            request_settings.reasoning_enabled,
+            request_settings.reasoning_effort.clone(),
+            request_settings.reasoning_budget,
             extra_body_fields,
         );
 
@@ -5439,26 +5434,22 @@ async fn run_memory_tool_update(
         )
     }));
 
-    let context_length = resolve_context_length(session, model, settings);
-    let max_tokens = resolve_max_tokens(session, model, settings);
-    let extra_body_fields = if provider_cred.provider_id == "llamacpp" {
-        build_llama_extra_fields(session, model, settings)
-    } else if provider_cred.provider_id == "ollama" {
-        build_ollama_extra_fields(
-            session,
-            model,
-            settings,
-            context_length,
-            max_tokens,
-            0.2,
-            1.0,
-            None,
-            None,
-            None,
-        )
-    } else {
-        None
-    };
+    let request_settings = RequestSettings::for_sampling(
+        resolve_context_length(session, model, settings),
+        resolve_max_tokens(session, model, settings),
+        0.2,
+        1.0,
+        None,
+        None,
+        None,
+    );
+    let extra_body_fields = build_provider_extra_fields(
+        &provider_cred.provider_id,
+        session,
+        model,
+        settings,
+        &request_settings,
+    );
     let context = ChatContext::initialize(app.clone())?;
     let calls = match send_dynamic_memory_request(
         app,
@@ -5466,8 +5457,8 @@ async fn run_memory_tool_update(
         model,
         api_key,
         &messages_for_api,
-        max_tokens,
-        context_length,
+        request_settings.max_tokens,
+        request_settings.context_length,
         extra_body_fields.clone(),
         Some(&tool_config),
         request_id,
@@ -5516,8 +5507,8 @@ async fn run_memory_tool_update(
                     model,
                     api_key,
                     &fallback_messages,
-                    max_tokens,
-                    context_length,
+                    request_settings.max_tokens,
+                    request_settings.context_length,
                     extra_body_fields,
                     None,
                     request_id,
@@ -5579,8 +5570,8 @@ async fn run_memory_tool_update(
                         model,
                         api_key,
                         &fallback_messages,
-                        max_tokens,
-                        context_length,
+                        request_settings.max_tokens,
+                        request_settings.context_length,
                         extra_body_fields,
                         None,
                         request_id,
@@ -5645,8 +5636,8 @@ async fn run_memory_tool_update(
                 model,
                 api_key,
                 &fallback_messages,
-                max_tokens,
-                context_length,
+                request_settings.max_tokens,
+                request_settings.context_length,
                 extra_body_fields,
                 None,
                 request_id,
@@ -6408,26 +6399,22 @@ async fn summarize_messages(
         "content": "Return only the concise summary for the above conversation window. Use the write_summary tool."
     }));
 
-    let context_length = resolve_context_length(session, model, settings);
-    let max_tokens = resolve_max_tokens(session, model, settings);
-    let extra_body_fields = if provider_cred.provider_id == "llamacpp" {
-        build_llama_extra_fields(session, model, settings)
-    } else if provider_cred.provider_id == "ollama" {
-        build_ollama_extra_fields(
-            session,
-            model,
-            settings,
-            context_length,
-            max_tokens,
-            0.2,
-            1.0,
-            None,
-            None,
-            None,
-        )
-    } else {
-        None
-    };
+    let request_settings = RequestSettings::for_sampling(
+        resolve_context_length(session, model, settings),
+        resolve_max_tokens(session, model, settings),
+        0.2,
+        1.0,
+        None,
+        None,
+        None,
+    );
+    let extra_body_fields = build_provider_extra_fields(
+        &provider_cred.provider_id,
+        session,
+        model,
+        settings,
+        &request_settings,
+    );
     let context = ChatContext::initialize(app.clone())?;
     let tool_attempt = send_dynamic_memory_request(
         app,
@@ -6435,8 +6422,8 @@ async fn summarize_messages(
         model,
         api_key,
         &messages_for_api,
-        max_tokens,
-        context_length,
+        request_settings.max_tokens,
+        request_settings.context_length,
         extra_body_fields.clone(),
         Some(&summarization_tool_config()),
         request_id,
@@ -6542,8 +6529,8 @@ async fn summarize_messages(
         model,
         api_key,
         &fallback_messages,
-        max_tokens,
-        context_length,
+        request_settings.max_tokens,
+        request_settings.context_length,
         extra_body_fields,
         None,
         request_id,
@@ -7724,25 +7711,22 @@ pub async fn chat_generate_scene_prompt(
         persona,
     );
 
-    let context_length = resolve_context_length(&session, model, settings);
-    let extra_body_fields = if provider_cred.provider_id == "llamacpp" {
-        build_llama_extra_fields(&session, model, settings)
-    } else if provider_cred.provider_id == "ollama" {
-        build_ollama_extra_fields(
-            &session,
-            model,
-            settings,
-            context_length,
-            1280,
-            0.7,
-            1.0,
-            None,
-            None,
-            None,
-        )
-    } else {
-        None
-    };
+    let request_settings = RequestSettings::for_sampling(
+        resolve_context_length(&session, model, settings),
+        1280,
+        0.7,
+        1.0,
+        None,
+        None,
+        None,
+    );
+    let extra_body_fields = build_provider_extra_fields(
+        &provider_cred.provider_id,
+        &session,
+        model,
+        settings,
+        &request_settings,
+    );
 
     let built = super::request_builder::build_chat_request(
         provider_cred,
@@ -7750,19 +7734,19 @@ pub async fn chat_generate_scene_prompt(
         &model.name,
         &messages_for_api,
         None,
-        0.7,
-        1.0,
-        1280,
-        context_length,
+        request_settings.temperature,
+        request_settings.top_p,
+        request_settings.max_tokens,
+        request_settings.context_length,
         false,
         None,
         None,
         None,
         None,
         None,
-        false,
-        None,
-        None,
+        request_settings.reasoning_enabled,
+        request_settings.reasoning_effort.clone(),
+        request_settings.reasoning_budget,
         extra_body_fields,
     );
 
@@ -8045,44 +8029,41 @@ pub async fn chat_generate_user_reply(
         json!({ "role": "user", "content": user_prompt }),
     ];
 
-    let context_length = resolve_context_length(&session, model, settings);
-    let extra_body_fields = if provider_cred.provider_id == "llamacpp" {
-        build_llama_extra_fields(&session, model, settings)
-    } else if provider_cred.provider_id == "ollama" {
-        build_ollama_extra_fields(
-            &session,
-            model,
-            settings,
-            context_length,
-            max_tokens,
-            0.8,
-            1.0,
-            None,
-            None,
-            None,
-        )
-    } else {
-        None
-    };
+    let request_settings = RequestSettings::for_sampling(
+        resolve_context_length(&session, model, settings),
+        max_tokens,
+        0.8,
+        1.0,
+        None,
+        None,
+        None,
+    );
+    let extra_body_fields = build_provider_extra_fields(
+        &provider_cred.provider_id,
+        &session,
+        model,
+        settings,
+        &request_settings,
+    );
     let built = super::request_builder::build_chat_request(
         provider_cred,
         &api_key,
         &model.name,
         &messages_for_api,
-        None,       // system_prompt already in messages
-        0.8,        // temperature
-        1.0,        // top_p
-        max_tokens, // max_tokens from settings
-        context_length,
-        streaming_enabled,  // streaming from settings
-        request_id.clone(), // request_id for streaming
-        None,               // frequency_penalty
-        None,               // presence_penalty
-        None,               // top_k
-        None,               // tool_config
-        false,              // reasoning_enabled
-        None,               // reasoning_effort
-        None,               // reasoning_budget
+        None,
+        request_settings.temperature,
+        request_settings.top_p,
+        request_settings.max_tokens,
+        request_settings.context_length,
+        streaming_enabled,
+        request_id.clone(),
+        request_settings.frequency_penalty,
+        request_settings.presence_penalty,
+        request_settings.top_k,
+        None,
+        request_settings.reasoning_enabled,
+        request_settings.reasoning_effort.clone(),
+        request_settings.reasoning_budget,
         extra_body_fields,
     );
 
