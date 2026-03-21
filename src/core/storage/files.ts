@@ -177,6 +177,12 @@ export const storageBridge = {
       JSON.parse(s),
     ),
   characterDelete: (id: string) => invoke("character_delete", { id }) as Promise<void>,
+  imageLibraryList: () => invoke<unknown[]>("storage_list_image_library"),
+  imageLibraryDownloadToDownloads: (filePath: string, filename?: string | null) =>
+    invoke<string>("storage_download_image_to_downloads", {
+      filePath,
+      filename: filename ?? null,
+    }),
 
   // Lorebook
   lorebooksList: () => invoke<string>("lorebooks_list").then((s) => JSON.parse(s) as any[]),

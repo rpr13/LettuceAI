@@ -323,6 +323,8 @@ pub fn run() {
             storage_manager::usage::storage_reset_database,
             storage_manager::usage::storage_usage_summary,
             storage_manager::media::storage_write_image,
+            storage_manager::media::storage_list_image_library,
+            storage_manager::media::storage_download_image_to_downloads,
             storage_manager::media::storage_get_image_path,
             storage_manager::media::storage_read_image,
             storage_manager::media::storage_delete_image,

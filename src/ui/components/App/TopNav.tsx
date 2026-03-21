@@ -143,7 +143,6 @@ export function TopNav({ currentPath, onBackOverride, titleOverride, rightAction
     return (
       basePath === "/settings/usage" ||
       basePath === "/settings/changelog" ||
-      basePath === "/library" ||
       basePath === "/settings/models"
     );
   }, [basePath]);
@@ -443,9 +442,8 @@ export function TopNav({ currentPath, onBackOverride, titleOverride, rightAction
         window.dispatchEvent(new CustomEvent("models:sort"));
       }
       return;
-    } else if (basePath === "/library") {
-      window.dispatchEvent(new CustomEvent("library:openFilter"));
-    } else if (typeof window !== "undefined") {
+    }
+    if (typeof window !== "undefined") {
       const globalWindow = window as any;
       if (typeof globalWindow.__openUsageFilters === "function") {
         globalWindow.__openUsageFilters();

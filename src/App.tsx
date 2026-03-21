@@ -626,6 +626,7 @@ function AppContent() {
           <motion.div
             key={(() => {
               if (location.pathname.startsWith("/settings")) return location.pathname;
+              if (location.pathname.startsWith("/library")) return location.pathname;
               const chatMatch = location.pathname.match(/^\/chat\/([^/]+)/);
               if (chatMatch) return `/chat/${chatMatch[1]}`;
               const groupMatch = location.pathname.match(/^\/group-chats\/([^/]+)/);
@@ -655,6 +656,10 @@ function AppContent() {
               <Route path="/discover/browse" element={<DiscoveryBrowsePage />} />
               <Route path="/discover/card/:path" element={<DiscoveryCardDetailPage />} />
               <Route path="/library" element={<LibraryPage />} />
+              <Route
+                path="/library/images"
+                element={<Navigate to="/library?view=images" replace />}
+              />
               <Route path="/library/lorebooks/:lorebookId" element={<StandaloneLorebookEditor />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/settings/providers" element={<ProvidersPage />} />

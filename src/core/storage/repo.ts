@@ -42,6 +42,30 @@ const SessionPreviewSchema = z.object({
 
 export type SessionPreview = z.infer<typeof SessionPreviewSchema>;
 
+const ImageLibraryItemSchema = z.object({
+  id: z.string(),
+  bucket: z.string(),
+  filePath: z.string(),
+  storagePath: z.string(),
+  filename: z.string(),
+  mimeType: z.string(),
+  sizeBytes: z.number().int().nonnegative(),
+  updatedAt: z.number().int(),
+  width: z.number().int().positive().nullable().optional(),
+  height: z.number().int().positive().nullable().optional(),
+  entityType: z.string().nullable().optional(),
+  entityId: z.string().nullable().optional(),
+  variant: z.string().nullable().optional(),
+  characterId: z.string().nullable().optional(),
+  sessionId: z.string().nullable().optional(),
+  role: z.string().nullable().optional(),
+});
+
+export type ImageLibraryItem = z.infer<typeof ImageLibraryItemSchema>;
+const BackgroundImageRefSchema = z.object({
+  backgroundImagePath: z.string().nullish().optional(),
+});
+
 export const SETTINGS_UPDATED_EVENT = "lettuceai:settings-updated";
 export const SESSION_UPDATED_EVENT = "lettuceai:session-updated";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -520,6 +544,37 @@ export async function listCharacters(): Promise<Character[]> {
   return z.array(CharacterSchema).parse(data);
 }
 
+export async function listImageLibraryItems(): Promise<ImageLibraryItem[]> {
+  const data = await storageBridge.imageLibraryList();
+  return z.array(ImageLibraryItemSchema).parse(data);
+}
+
+export async function downloadImageLibraryItem(
+  item: Pick<ImageLibraryItem, "filePath" | "filename">,
+): Promise<string> {
+  return storageBridge.imageLibraryDownloadToDownloads(item.filePath, item.filename);
+}
+
+export async function listReferencedBackgroundImagePaths(): Promise<string[]> {
+  const [characters, groups, groupSessions] = await Promise.all([
+    listCharacters(),
+    storageBridge.groupsList(),
+    storageBridge.groupSessionsListAll(),
+  ]);
+
+  return [
+    ...characters.map((item) => item.backgroundImagePath),
+    ...z
+      .array(BackgroundImageRefSchema)
+      .parse(groups)
+      .map((item) => item.backgroundImagePath),
+    ...z
+      .array(BackgroundImageRefSchema)
+      .parse(groupSessions)
+      .map((item) => item.backgroundImagePath),
+  ].filter((value): value is string => typeof value === "string" && value.length > 0);
+}
+
 export async function saveCharacter(c: Partial<Character>): Promise<Character> {
   const settings = await readSettings();
   const pureModeLevel =
@@ -583,6 +638,16 @@ export async function deleteCharacter(id: string): Promise<void> {
 export async function listLorebooks(): Promise<Lorebook[]> {
   const data = await storageBridge.lorebooksList();
   return z.array(LorebookSchema).parse(data);
+}
+
+export async function listGroups(): Promise<Group[]> {
+  const data = await storageBridge.groupsList();
+  return z.array(GroupSchema).parse(data);
+}
+
+export async function listAllGroupSessions(): Promise<GroupSession[]> {
+  const data = await storageBridge.groupSessionsListAll();
+  return z.array(GroupSessionSchema).parse(data);
 }
 
 export async function saveLorebook(

@@ -1,0 +1,603 @@
+import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { motion } from "framer-motion";
+import { Copy, Download, Image as ImageIcon, Loader2 } from "lucide-react";
+
+import {
+  downloadImageLibraryItem,
+  listImageLibraryItems,
+  listReferencedBackgroundImagePaths,
+  type ImageLibraryItem,
+} from "../../../core/storage/repo";
+import { BottomMenu } from "../../components";
+import { cn } from "../../design-tokens";
+import { toast } from "../../components/toast";
+import { isRenderableImageUrl } from "../../../core/utils/image";
+
+type FilterOption = "All" | "Backgrounds" | "Avatars" | "Attachments" | "Other";
+type SortOption = "Newest" | "Largest" | "Name";
+
+const SORTS: SortOption[] = ["Newest", "Largest", "Name"];
+const GRID_GAP = 12;
+const GRID_OVERSCAN_ROWS = 3;
+const assetUrlCache = new Map<string, string>();
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB"];
+  let value = bytes / 1024;
+  let unit = units[0];
+  for (let index = 1; index < units.length && value >= 1024; index += 1) {
+    value /= 1024;
+    unit = units[index];
+  }
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${unit}`;
+}
+
+function formatDate(timestamp: number): string {
+  if (!timestamp) return "Unknown";
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(timestamp));
+}
+
+function getStoredImageId(item: ImageLibraryItem): string | null {
+  if (item.bucket !== "stored") return null;
+  const stem = item.filename.replace(/\.[^.]+$/, "");
+  return stem || null;
+}
+
+function getImageKind(
+  item: ImageLibraryItem,
+  backgroundIds: Set<string>,
+): Exclude<FilterOption, "All"> {
+  if (item.bucket === "avatar") return "Avatars";
+  if (item.bucket === "attachment") return "Attachments";
+  const storedId = getStoredImageId(item);
+  if (storedId && backgroundIds.has(storedId)) return "Backgrounds";
+  return "Other";
+}
+
+function imageKindLabel(kind: Exclude<FilterOption, "All">): string {
+  if (kind === "Backgrounds") return "Background";
+  if (kind === "Avatars") return "Avatar";
+  if (kind === "Attachments") return "Attachment";
+  return "Stored";
+}
+
+function matchesFilter(item: ImageLibraryItem, filter: FilterOption, backgroundIds: Set<string>) {
+  if (filter === "All") return true;
+  return getImageKind(item, backgroundIds) === filter;
+}
+
+function sortItems(items: ImageLibraryItem[], sort: SortOption) {
+  const next = [...items];
+  if (sort === "Largest") {
+    return next.sort((a, b) => b.sizeBytes - a.sizeBytes || b.updatedAt - a.updatedAt);
+  }
+  if (sort === "Name") {
+    return next.sort((a, b) => a.filename.localeCompare(b.filename) || b.updatedAt - a.updatedAt);
+  }
+  return next.sort((a, b) => b.updatedAt - a.updatedAt || a.filename.localeCompare(b.filename));
+}
+
+function copyToClipboard(value: string, label: string) {
+  navigator.clipboard
+    .writeText(value)
+    .then(() => toast.success(`${label} copied`, value))
+    .catch((error) => {
+      console.error(`Failed to copy ${label.toLowerCase()}:`, error);
+      toast.error(`Failed to copy ${label.toLowerCase()}`);
+    });
+}
+
+function getAssetUrl(filePath: string): string {
+  const cached = assetUrlCache.get(filePath);
+  if (cached) return cached;
+  const next = convertFileSrc(filePath);
+  assetUrlCache.set(filePath, next);
+  return next;
+}
+
+function compactPath(value: string): string {
+  if (value.length <= 56) return value;
+  return `${value.slice(0, 20)}...${value.slice(-28)}`;
+}
+
+const ImageTile = memo(function ImageTile({
+  item,
+  kindLabel,
+  onSelect,
+}: {
+  item: ImageLibraryItem;
+  kindLabel: string;
+  onSelect: (item: ImageLibraryItem) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(item)}
+      className="group relative aspect-square overflow-hidden rounded-2xl border border-fg/10 bg-fg/[0.03] text-left"
+    >
+      <img
+        src={getAssetUrl(item.filePath)}
+        alt={item.filename}
+        className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+        loading="lazy"
+        decoding="async"
+      />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
+      <div className="absolute left-2 top-2 rounded-full border border-white/15 bg-black/45 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.1em] text-white/85 backdrop-blur-md">
+        {kindLabel}
+      </div>
+      <div className="absolute inset-x-0 bottom-0 p-3">
+        <div className="truncate text-sm font-semibold text-white">{item.filename}</div>
+        <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-white/70">
+          <span>
+            {item.width && item.height ? `${item.width} × ${item.height}` : item.mimeType}
+          </span>
+          <span>{formatBytes(item.sizeBytes)}</span>
+        </div>
+      </div>
+    </button>
+  );
+});
+
+const ImageLibraryGrid = memo(function ImageLibraryGrid({
+  items,
+  backgroundIds,
+  scrollContainerRef,
+  onSelect,
+}: {
+  items: ImageLibraryItem[];
+  backgroundIds: Set<string>;
+  scrollContainerRef: RefObject<HTMLElement | null>;
+  onSelect: (item: ImageLibraryItem) => void;
+}) {
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const [gridWidth, setGridWidth] = useState(0);
+  const gridRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const syncViewport = () => setViewportWidth(window.innerWidth);
+    syncViewport();
+
+    window.addEventListener("resize", syncViewport);
+
+    return () => {
+      window.removeEventListener("resize", syncViewport);
+    };
+  }, []);
+
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) return;
+
+    const syncGridWidth = () => setGridWidth(grid.clientWidth);
+    syncGridWidth();
+
+    const resizeObserver = new ResizeObserver(syncGridWidth);
+    resizeObserver.observe(grid);
+
+    return () => resizeObserver.disconnect();
+  }, [items.length]);
+
+  const columnCount = useMemo(() => {
+    if (viewportWidth >= 1536) return 6;
+    if (viewportWidth >= 1280) return 5;
+    if (viewportWidth >= 1024) return 4;
+    return 2;
+  }, [viewportWidth]);
+
+  const itemSize = useMemo(() => {
+    const safeGridWidth = gridWidth || Math.max(0, window.innerWidth - 32);
+    if (columnCount <= 0) return 0;
+    return Math.max(0, (safeGridWidth - GRID_GAP * (columnCount - 1)) / columnCount);
+  }, [columnCount, gridWidth]);
+
+  const rowCount = Math.ceil(items.length / columnCount);
+
+  const rowVirtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => itemSize || 200,
+    overscan: GRID_OVERSCAN_ROWS,
+  });
+
+  useEffect(() => {
+    rowVirtualizer.measure();
+  }, [columnCount, gridWidth, itemSize, rowVirtualizer]);
+
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const totalHeight = rowVirtualizer.getTotalSize() + Math.max(0, rowCount - 1) * GRID_GAP;
+
+  return (
+    <div
+      ref={gridRef}
+      style={{ contain: "layout paint style", height: totalHeight, position: "relative" }}
+    >
+      {virtualRows.map((virtualRow) => {
+        const startIndex = virtualRow.index * columnCount;
+        const rowItems = items.slice(startIndex, startIndex + columnCount);
+
+        return (
+          <div
+            key={virtualRow.key}
+            className="absolute left-0 top-0 grid w-full gap-3 will-change-transform"
+            style={{
+              gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+              height: itemSize || 200,
+              transform: `translateY(${virtualRow.start + virtualRow.index * GRID_GAP}px)`,
+            }}
+          >
+            {rowItems.map((item) => (
+              <ImageTile
+                key={item.id}
+                item={item}
+                kindLabel={imageKindLabel(getImageKind(item, backgroundIds))}
+                onSelect={onSelect}
+              />
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+});
+
+export function ImageLibraryPanel({
+  scrollContainerRef,
+  embedded: _embedded = false,
+}: {
+  scrollContainerRef: RefObject<HTMLElement | null>;
+  embedded?: boolean;
+}) {
+  const [items, setItems] = useState<ImageLibraryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<FilterOption>("All");
+  const [sort, setSort] = useState<SortOption>("Newest");
+  const [showSortMenu, setShowSortMenu] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<ImageLibraryItem | null>(null);
+  const [backgroundIds, setBackgroundIds] = useState<Set<string>>(new Set());
+  const [downloadingItemId, setDownloadingItemId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoading(true);
+        const [libraryItems, referencedBackgrounds] = await Promise.all([
+          listImageLibraryItems(),
+          listReferencedBackgroundImagePaths(),
+        ]);
+
+        const nextBackgroundIds = new Set<string>();
+        for (const value of referencedBackgrounds) {
+          if (!value || isRenderableImageUrl(value)) continue;
+          nextBackgroundIds.add(value);
+        }
+
+        setItems(libraryItems);
+        setBackgroundIds(nextBackgroundIds);
+      } catch (error) {
+        console.error("Failed to load image library:", error);
+        toast.error("Failed to load image library");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void load();
+  }, []);
+
+  const counts = useMemo(
+    () => ({
+      all: items.length,
+      backgrounds: items.filter((item) => getImageKind(item, backgroundIds) === "Backgrounds")
+        .length,
+      avatars: items.filter((item) => getImageKind(item, backgroundIds) === "Avatars").length,
+      attachments: items.filter((item) => getImageKind(item, backgroundIds) === "Attachments")
+        .length,
+      other: items.filter((item) => getImageKind(item, backgroundIds) === "Other").length,
+    }),
+    [backgroundIds, items],
+  );
+
+  const filteredItems = useMemo(() => {
+    const lowered = query.trim().toLowerCase();
+    const next = items.filter((item) => {
+      if (!matchesFilter(item, filter, backgroundIds)) return false;
+      if (!lowered) return true;
+      return (
+        item.filename.toLowerCase().includes(lowered) ||
+        item.storagePath.toLowerCase().includes(lowered) ||
+        item.entityId?.toLowerCase().includes(lowered) ||
+        item.sessionId?.toLowerCase().includes(lowered) ||
+        item.characterId?.toLowerCase().includes(lowered)
+      );
+    });
+    return sortItems(next, sort);
+  }, [backgroundIds, filter, items, query, sort]);
+
+  const handleDownload = async (item: ImageLibraryItem) => {
+    try {
+      setDownloadingItemId(item.id);
+      const savedPath = await downloadImageLibraryItem(item);
+      toast.success("Image saved", savedPath);
+    } catch (error) {
+      console.error("Failed to download image:", error);
+      toast.error("Download failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setDownloadingItemId((current) => (current === item.id ? null : current));
+    }
+  };
+
+  return (
+    <>
+      <div className="mb-4 space-y-3">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          {[
+            { key: "All" as const, label: "All", count: counts.all },
+            { key: "Backgrounds" as const, label: "Backgrounds", count: counts.backgrounds },
+            { key: "Avatars" as const, label: "Avatars", count: counts.avatars },
+            { key: "Attachments" as const, label: "Attachments", count: counts.attachments },
+            { key: "Other" as const, label: "Other", count: counts.other },
+          ].map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              onClick={() => setFilter(option.key)}
+              className={cn(
+                "flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-sm transition",
+                filter === option.key
+                  ? "border-fg/15 bg-fg/10 text-fg"
+                  : "border-fg/10 bg-surface-el/20 text-fg/65 hover:bg-fg/5 hover:text-fg",
+              )}
+            >
+              <span className="font-medium">{option.label}</span>
+              <span className="rounded-md bg-fg/8 px-1.5 py-0.5 text-[11px] text-fg/55">
+                {option.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search by filename, path, session id, or entity id"
+            className="min-w-0 flex-1 rounded-xl border border-fg/10 bg-surface-el/20 px-3 py-3 text-sm text-fg outline-none transition focus:border-fg/25"
+          />
+          <button
+            type="button"
+            onClick={() => setShowSortMenu(true)}
+            className="shrink-0 rounded-xl border border-fg/10 bg-surface-el/20 px-3 py-3 text-sm font-medium text-fg/70 transition hover:bg-fg/5 hover:text-fg"
+          >
+            Sort
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-5">
+          {Array.from({ length: 12 }).map((_, index) => (
+            <div
+              key={index}
+              className="aspect-square animate-pulse rounded-2xl border border-fg/10 bg-fg/[0.04]"
+            />
+          ))}
+        </div>
+      ) : filteredItems.length === 0 ? (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex min-h-[45vh] flex-col items-center justify-center rounded-2xl border border-dashed border-fg/12 bg-fg/[0.02] px-6 text-center"
+        >
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-fg/10 bg-fg/[0.04]">
+            <ImageIcon className="h-7 w-7 text-fg/35" />
+          </div>
+          <h2 className="text-lg font-semibold text-fg">No images match this view</h2>
+          <p className="mt-2 max-w-md text-sm text-fg/55">
+            Try a different filter or search term. The library only lists images already stored in
+            the app&apos;s local storage.
+          </p>
+        </motion.div>
+      ) : (
+        <ImageLibraryGrid
+          items={filteredItems}
+          backgroundIds={backgroundIds}
+          scrollContainerRef={scrollContainerRef}
+          onSelect={setSelectedItem}
+        />
+      )}
+
+      <BottomMenu isOpen={showSortMenu} onClose={() => setShowSortMenu(false)} title="Sort">
+        <div className="space-y-5">
+          <div>
+            <div className="space-y-2">
+              {SORTS.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => {
+                    setSort(option);
+                    setShowSortMenu(false);
+                  }}
+                  className={cn(
+                    "flex w-full items-center justify-between rounded-xl px-4 py-3 text-left text-sm transition",
+                    sort === option
+                      ? "bg-fg/10 text-fg"
+                      : "border border-fg/10 bg-surface-el/50 text-fg/65 hover:bg-fg/5 hover:text-fg",
+                  )}
+                >
+                  <span>{option}</span>
+                  {sort === option && (
+                    <span className="text-xs font-medium text-accent">Active</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </BottomMenu>
+
+      <BottomMenu
+        isOpen={Boolean(selectedItem)}
+        onClose={() => setSelectedItem(null)}
+        title={selectedItem?.filename ?? ""}
+      >
+        {selectedItem && (
+          <div className="space-y-4">
+            <div className="overflow-hidden rounded-2xl border border-fg/10 bg-fg/[0.03]">
+              <img
+                src={getAssetUrl(selectedItem.filePath)}
+                alt={selectedItem.filename}
+                className="max-h-[50vh] w-full object-contain"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { label: "Kind", value: imageKindLabel(getImageKind(selectedItem, backgroundIds)) },
+                { label: "Type", value: selectedItem.mimeType },
+                {
+                  label: "Dimensions",
+                  value:
+                    selectedItem.width && selectedItem.height
+                      ? `${selectedItem.width} × ${selectedItem.height}`
+                      : "Unknown",
+                },
+                { label: "Size", value: formatBytes(selectedItem.sizeBytes) },
+                { label: "Updated", value: formatDate(selectedItem.updatedAt) },
+                {
+                  label: "Scope",
+                  value:
+                    getImageKind(selectedItem, backgroundIds) === "Backgrounds"
+                      ? "Chat background"
+                      : (selectedItem.variant ?? "Standard"),
+                },
+              ].map((field) => (
+                <div
+                  key={field.label}
+                  className="rounded-xl border border-fg/10 bg-surface-el/60 px-3 py-2.5"
+                >
+                  <div className="text-[11px] uppercase tracking-[0.12em] text-fg/40">
+                    {field.label}
+                  </div>
+                  <div className="mt-1 text-[13px] font-medium text-fg">{field.value}</div>
+                </div>
+              ))}
+            </div>
+
+            <details className="rounded-xl border border-fg/10 bg-surface-el/60">
+              <summary className="cursor-pointer list-none px-3 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[11px] uppercase tracking-[0.12em] text-fg/40">
+                      Storage Path
+                    </div>
+                    <div className="mt-1 truncate font-mono text-[11px] text-fg/60">
+                      {compactPath(selectedItem.storagePath)}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-xs font-medium text-fg/50">Show</div>
+                </div>
+              </summary>
+              <div className="border-t border-fg/10 px-3 pb-3 pt-2">
+                <div className="break-all font-mono text-xs text-fg/75">
+                  {selectedItem.storagePath}
+                </div>
+              </div>
+            </details>
+
+            {(selectedItem.entityId || selectedItem.sessionId || selectedItem.characterId) && (
+              <details className="rounded-xl border border-fg/10 bg-surface-el/60">
+                <summary className="cursor-pointer list-none px-3 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-fg/40">
+                        Context
+                      </div>
+                      <div className="mt-1 truncate text-xs text-fg/60">
+                        {[selectedItem.entityType, selectedItem.characterId, selectedItem.sessionId]
+                          .filter(Boolean)
+                          .join(" • ") || "Linked record"}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-xs font-medium text-fg/50">Show</div>
+                  </div>
+                </summary>
+                <div className="border-t border-fg/10 px-3 pb-3 pt-2">
+                  <div className="space-y-1 text-sm text-fg/75">
+                    {selectedItem.entityType && selectedItem.entityId && (
+                      <p>
+                        {selectedItem.entityType}:{" "}
+                        <span className="font-mono">{selectedItem.entityId}</span>
+                      </p>
+                    )}
+                    {selectedItem.characterId && (
+                      <p>
+                        character: <span className="font-mono">{selectedItem.characterId}</span>
+                      </p>
+                    )}
+                    {selectedItem.sessionId && (
+                      <p>
+                        session: <span className="font-mono">{selectedItem.sessionId}</span>
+                      </p>
+                    )}
+                    {selectedItem.role && <p>role: {selectedItem.role}</p>}
+                  </div>
+                </div>
+              </details>
+            )}
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => copyToClipboard(selectedItem.storagePath, "Storage path")}
+                className="flex items-center justify-center gap-2 rounded-xl border border-fg/10 bg-fg/[0.04] px-4 py-3 text-sm font-medium text-fg/75 transition hover:bg-fg/[0.08] hover:text-fg"
+              >
+                <Copy className="h-4 w-4" />
+                Copy path
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDownload(selectedItem)}
+                disabled={downloadingItemId === selectedItem.id}
+                className={cn(
+                  "flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium transition",
+                  downloadingItemId === selectedItem.id
+                    ? "cursor-wait border-fg/10 bg-fg/[0.06] text-fg/55"
+                    : "border-fg/10 bg-fg/[0.04] text-fg/75 hover:bg-fg/[0.08] hover:text-fg",
+                )}
+              >
+                {downloadingItemId === selectedItem.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
+                {downloadingItemId === selectedItem.id ? "Saving..." : "Download"}
+              </button>
+            </div>
+          </div>
+        )}
+      </BottomMenu>
+    </>
+  );
+}
+
+export function ImageLibraryPage() {
+  const mainRef = useRef<HTMLElement | null>(null);
+
+  return (
+    <div className="flex h-full flex-col text-fg/85">
+      <main ref={mainRef} className="flex-1 overflow-y-auto px-4 pb-24 pt-4">
+        <ImageLibraryPanel scrollContainerRef={mainRef} />
+      </main>
+    </div>
+  );
+}

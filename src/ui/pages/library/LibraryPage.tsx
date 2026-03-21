@@ -16,16 +16,16 @@ import { typography, interactive, cn } from "../../design-tokens";
 import { useAvatar } from "../../hooks/useAvatar";
 import { useAvatarGradient } from "../../hooks/useAvatarGradient";
 import { useRocketEasterEgg } from "../../hooks/useRocketEasterEgg";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { BottomMenu, CharacterExportMenu } from "../../components";
 import { LorebookAvatar } from "../../components/LorebookAvatar";
+import { ImageLibraryPanel } from "./ImageLibraryPage";
 import {
   MessageCircle,
   Edit2,
   Trash2,
   Download,
   Upload,
-  Check,
   BookOpen,
   Users,
   Pencil,
@@ -44,10 +44,27 @@ import { listen } from "@tauri-apps/api/event";
 import { useI18n } from "../../../core/i18n/context";
 import { isRenderableImageUrl } from "../../../core/utils/image";
 
-type FilterOption = "All" | "Characters" | "Personas" | "Lorebooks";
+type FilterOption = "All" | "Characters" | "Personas" | "Lorebooks" | "Images";
 type LibraryItem = (Character | Persona | Lorebook) & {
   itemType: "character" | "persona" | "lorebook";
 };
+
+const FILTER_QUERY_VALUES: Record<FilterOption, string | null> = {
+  All: null,
+  Characters: "characters",
+  Personas: "personas",
+  Lorebooks: "lorebooks",
+  Images: "images",
+};
+
+function resolveLibraryFilter(search: string): FilterOption {
+  const params = new URLSearchParams(search);
+  const view = params.get("view");
+  const matched = (
+    Object.entries(FILTER_QUERY_VALUES) as Array<[FilterOption, string | null]>
+  ).find(([, value]) => value === view);
+  return matched?.[0] ?? "All";
+}
 
 function getItemName(item: LibraryItem): string {
   if (item.itemType === "character") return (item as Character).name;
@@ -61,11 +78,11 @@ function getItemDisableGradient(item: LibraryItem): boolean | undefined {
 
 export function LibraryPage() {
   const { t } = useI18n();
+  const location = useLocation();
   const [characters, setCharacters] = useState<Character[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [lorebooks, setLorebooks] = useState<Lorebook[]>([]);
-  const [filter, setFilter] = useState<FilterOption>("All");
-  const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const [filter, setFilter] = useState<FilterOption>(() => resolveLibraryFilter(location.search));
   const [selectedItem, setSelectedItem] = useState<LibraryItem | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -82,6 +99,12 @@ export function LibraryPage() {
   const [renaming, setRenaming] = useState(false);
 
   const navigate = useNavigate();
+  const mainRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const next = resolveLibraryFilter(location.search);
+    setFilter((current) => (current === next ? current : next));
+  }, [location.search]);
 
   const loadData = async () => {
     try {
@@ -107,12 +130,6 @@ export function LibraryPage() {
     return () => {
       unlisten.then((f) => f());
     };
-  }, []);
-
-  useEffect(() => {
-    const handleOpenFilter = () => setShowFilterMenu(true);
-    window.addEventListener("library:openFilter", handleOpenFilter);
-    return () => window.removeEventListener("library:openFilter", handleOpenFilter);
   }, []);
 
   const handleRenameConfirm = async () => {
@@ -270,10 +287,61 @@ export function LibraryPage() {
     return false;
   });
 
+  const setLibraryFilter = (next: FilterOption) => {
+    setFilter(next);
+    const params = new URLSearchParams(location.search);
+    const nextView = FILTER_QUERY_VALUES[next];
+    if (nextView) {
+      params.set("view", nextView);
+    } else {
+      params.delete("view");
+    }
+    const search = params.toString();
+    navigate(
+      {
+        pathname: "/library",
+        search: search ? `?${search}` : "",
+      },
+      { replace: true },
+    );
+  };
+
   return (
     <div className="flex h-full flex-col pb-6 text-fg/80">
-      <main className="flex-1 overflow-y-auto px-4 pt-4">
-        {filteredItems.length === 0 ? (
+      <main ref={mainRef} className="flex-1 overflow-y-auto px-4 pt-4">
+        <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
+          {(["All", "Characters", "Personas", "Lorebooks", "Images"] as FilterOption[]).map(
+            (option) => {
+              const filterLabels: Record<FilterOption, string> = {
+                All: t("library.filters.all"),
+                Characters: t("library.filters.characters"),
+                Personas: t("library.filters.personas"),
+                Lorebooks: t("library.filters.lorebooks"),
+                Images: "Images",
+              };
+
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setLibraryFilter(option)}
+                  className={cn(
+                    "shrink-0 rounded-xl border px-4 py-2 text-sm font-medium transition",
+                    filter === option
+                      ? "border-fg/15 bg-fg/10 text-fg"
+                      : "border-fg/10 bg-surface-el/40 text-fg/60 hover:bg-fg/5 hover:text-fg",
+                  )}
+                >
+                  {filterLabels[option]}
+                </button>
+              );
+            },
+          )}
+        </div>
+
+        {filter === "Images" ? (
+          <ImageLibraryPanel embedded scrollContainerRef={mainRef} />
+        ) : filteredItems.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -367,40 +435,6 @@ export function LibraryPage() {
           </div>
         )}
       </main>
-
-      {/* Filter Menu */}
-      <BottomMenu
-        isOpen={showFilterMenu}
-        onClose={() => setShowFilterMenu(false)}
-        title={t("library.filterTitle")}
-      >
-        <div className="space-y-2">
-          {(["All", "Characters", "Personas", "Lorebooks"] as FilterOption[]).map((option) => {
-            const filterLabels: Record<FilterOption, string> = {
-              All: t("library.filters.all"),
-              Characters: t("library.filters.characters"),
-              Personas: t("library.filters.personas"),
-              Lorebooks: t("library.filters.lorebooks"),
-            };
-            return (
-              <button
-                key={option}
-                onClick={() => {
-                  setFilter(option);
-                  setShowFilterMenu(false);
-                }}
-                className={cn(
-                  "flex w-full items-center justify-between rounded-xl px-4 py-3 text-left transition",
-                  filter === option ? "bg-fg/10 text-fg" : "text-fg/60 hover:bg-fg/5 hover:text-fg",
-                )}
-              >
-                <span className="text-sm font-medium">{filterLabels[option]}</span>
-                {filter === option && <Check className="h-4 w-4 text-accent" />}
-              </button>
-            );
-          })}
-        </div>
-      </BottomMenu>
 
       {/* Item Actions Menu */}
       <BottomMenu

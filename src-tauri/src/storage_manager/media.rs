@@ -1,6 +1,8 @@
 use base64::{engine::general_purpose, Engine as _};
 use std::fs;
 use std::path::PathBuf;
+use std::time::UNIX_EPOCH;
+use tauri::Manager;
 
 use super::legacy::storage_root;
 use crate::utils::{log_debug, log_info};
@@ -8,6 +10,27 @@ use crate::utils::{log_debug, log_info};
 pub struct StoredImageInfo {
     pub file_path: String,
     pub mime_type: String,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageLibraryItem {
+    pub id: String,
+    pub bucket: String,
+    pub file_path: String,
+    pub storage_path: String,
+    pub filename: String,
+    pub mime_type: String,
+    pub size_bytes: u64,
+    pub updated_at: i64,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub entity_type: Option<String>,
+    pub entity_id: Option<String>,
+    pub variant: Option<String>,
+    pub character_id: Option<String>,
+    pub session_id: Option<String>,
+    pub role: Option<String>,
 }
 
 fn decode_base64_payload(base64_data: &str) -> Result<Vec<u8>, String> {
@@ -50,11 +73,158 @@ fn image_mime_type_from_extension(extension: &str) -> &'static str {
     }
 }
 
+fn is_supported_image_file(path: &PathBuf) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| {
+            matches!(
+                ext.to_ascii_lowercase().as_str(),
+                "jpg" | "jpeg" | "png" | "gif" | "webp"
+            )
+        })
+        .unwrap_or(false)
+}
+
+fn scan_image_dir(
+    root: &PathBuf,
+    current: &PathBuf,
+    out: &mut Vec<ImageLibraryItem>,
+) -> Result<(), String> {
+    if !current.exists() {
+        return Ok(());
+    }
+
+    let entries = fs::read_dir(current)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        let path = entry.path();
+        if path.is_dir() {
+            scan_image_dir(root, &path, out)?;
+            continue;
+        }
+        if !is_supported_image_file(&path) {
+            continue;
+        }
+
+        if path.file_name().and_then(|name| name.to_str()) == Some("avatar.webp") {
+            let sibling = path.with_file_name("avatar_base.webp");
+            if sibling.exists() {
+                continue;
+            }
+        }
+
+        let storage_path = path
+            .strip_prefix(root)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
+            .to_string_lossy()
+            .replace('\\', "/");
+        let filename = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default()
+            .to_string();
+        let metadata = fs::metadata(&path)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        let updated_at = metadata
+            .modified()
+            .ok()
+            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+            .map(|duration| duration.as_millis() as i64)
+            .unwrap_or(0);
+        let (width, height) = image::image_dimensions(&path).ok().unwrap_or((0, 0));
+
+        let mut item = ImageLibraryItem {
+            id: storage_path.clone(),
+            bucket: "stored".to_string(),
+            file_path: path.to_string_lossy().to_string(),
+            storage_path,
+            filename,
+            mime_type: image_mime_type_from_extension(
+                path.extension()
+                    .and_then(|ext| ext.to_str())
+                    .unwrap_or_default(),
+            )
+            .to_string(),
+            size_bytes: metadata.len(),
+            updated_at,
+            width: if width > 0 { Some(width) } else { None },
+            height: if height > 0 { Some(height) } else { None },
+            entity_type: None,
+            entity_id: None,
+            variant: None,
+            character_id: None,
+            session_id: None,
+            role: None,
+        };
+
+        if item.storage_path.starts_with("avatars/") {
+            item.bucket = "avatar".to_string();
+            let parts: Vec<&str> = item.storage_path.split('/').collect();
+            if parts.len() >= 3 {
+                let entity_dir = parts[1];
+                if let Some(value) = entity_dir.strip_prefix("character-") {
+                    item.entity_type = Some("character".to_string());
+                    item.entity_id = Some(value.to_string());
+                } else if let Some(value) = entity_dir.strip_prefix("persona-") {
+                    item.entity_type = Some("persona".to_string());
+                    item.entity_id = Some(value.to_string());
+                }
+                item.variant = path
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .map(|stem| stem.to_string());
+            }
+        } else if item.storage_path.starts_with("sessions/") {
+            item.bucket = "attachment".to_string();
+            let parts: Vec<&str> = item.storage_path.split('/').collect();
+            if parts.len() >= 4 {
+                item.character_id = Some(parts[1].to_string());
+                item.session_id = Some(parts[2].to_string());
+                let filename = parts[3];
+                item.role = if filename.starts_with("ai_") {
+                    Some("assistant".to_string())
+                } else if filename.starts_with("user_") {
+                    Some("user".to_string())
+                } else {
+                    None
+                };
+            }
+        }
+
+        out.push(item);
+    }
+
+    Ok(())
+}
+
 fn images_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let images_dir = storage_root(app)?.join("images");
     fs::create_dir_all(&images_dir)
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     Ok(images_dir)
+}
+
+fn downloads_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    #[cfg(target_os = "android")]
+    let download_dir = PathBuf::from("/storage/emulated/0/Download");
+
+    #[cfg(not(target_os = "android"))]
+    let download_dir = app.path().download_dir().map_err(|e| {
+        crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            format!("Failed to get downloads directory: {}", e),
+        )
+    })?;
+
+    if !download_dir.exists() {
+        fs::create_dir_all(&download_dir)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    }
+
+    Ok(download_dir)
 }
 
 fn find_image_path(images_dir: &PathBuf, image_id: &str) -> Option<(PathBuf, &'static str)> {
@@ -117,6 +287,93 @@ pub fn storage_write_image(
     base64_data: String,
 ) -> Result<String, String> {
     Ok(storage_write_image_data(&app, &image_id, &base64_data)?.file_path)
+}
+
+#[tauri::command]
+pub fn storage_list_image_library(app: tauri::AppHandle) -> Result<Vec<ImageLibraryItem>, String> {
+    let root = storage_root(&app)?;
+    let mut items = Vec::new();
+
+    for dir in ["images", "avatars", "sessions"] {
+        let path = root.join(dir);
+        scan_image_dir(&root, &path, &mut items)?;
+    }
+
+    items.sort_by(|a, b| {
+        b.updated_at
+            .cmp(&a.updated_at)
+            .then_with(|| a.storage_path.cmp(&b.storage_path))
+    });
+
+    Ok(items)
+}
+
+#[tauri::command]
+pub fn storage_download_image_to_downloads(
+    app: tauri::AppHandle,
+    file_path: String,
+    filename: Option<String>,
+) -> Result<String, String> {
+    let source_path = PathBuf::from(&file_path);
+    if !source_path.exists() {
+        return Err(crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            format!("Image file not found: {}", file_path),
+        ));
+    }
+
+    let resolved_filename = filename
+        .and_then(|value| {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        })
+        .or_else(|| {
+            source_path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .map(|value| value.to_string())
+        })
+        .ok_or_else(|| {
+            crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                "Unable to resolve filename for image download".to_string(),
+            )
+        })?;
+
+    let target_path = downloads_dir(&app)?.join(&resolved_filename);
+    log_info(
+        &app,
+        "storage_download_image_to_downloads",
+        format!(
+            "Copying image to downloads: {} -> {}",
+            file_path,
+            target_path.display()
+        ),
+    );
+
+    fs::copy(&source_path, &target_path)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    let saved_path = target_path
+        .to_str()
+        .ok_or_else(|| {
+            crate::utils::err_msg(module_path!(), line!(), "Invalid download path".to_string())
+        })?
+        .to_string();
+
+    log_info(
+        &app,
+        "storage_download_image_to_downloads",
+        format!("Image copied to downloads: {}", saved_path),
+    );
+
+    Ok(saved_path)
 }
 
 #[tauri::command]
