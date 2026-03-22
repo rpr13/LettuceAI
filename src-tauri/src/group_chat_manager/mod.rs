@@ -1330,8 +1330,8 @@ async fn send_dynamic_memory_request(
         &model.name,
         messages_for_api,
         None,
-        0.2,
-        1.0,
+        Some(0.2),
+        Some(1.0),
         max_tokens,
         context_length,
         false,
@@ -1383,8 +1383,8 @@ async fn send_dynamic_memory_request(
                     &model.name,
                     messages_for_api,
                     None,
-                    0.2,
-                    1.0,
+                    Some(0.2),
+                    Some(1.0),
                     max_tokens,
                     context_length,
                     false,
@@ -4292,8 +4292,8 @@ async fn select_speaker_via_llm_with_tracking(
         &model.name,
         &messages,
         None, // system_prompt
-        0.3,  // Low temperature for consistent selection
-        1.0,  // top_p
+        Some(0.3), // Low temperature for consistent selection
+        Some(1.0), // top_p
         500,  // max_tokens - short response
         context_length,
         false, // No streaming for selection
@@ -4631,8 +4631,8 @@ async fn generate_character_response(
         &model.name,
         &messages_for_api,
         None, // system prompt already handled via push_system_message
-        temperature,
-        top_p,
+        Some(temperature),
+        Some(top_p),
         max_tokens,
         context_length,
         true,              // Stream
@@ -5816,8 +5816,8 @@ pub async fn group_chat_generate_user_reply(
         &model.name,
         &messages_for_api,
         None,       // system prompt already handled via push_system_message
-        0.8,        // temperature
-        1.0,        // top_p
+        Some(0.8),  // temperature
+        Some(1.0),  // top_p
         max_tokens, // max_tokens from settings
         context_length,
         streaming_enabled,  // streaming from settings

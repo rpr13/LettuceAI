@@ -45,8 +45,8 @@ pub trait ProviderAdapter {
         model_name: &str,
         messages_for_api: &Vec<Value>,
         system_prompt: Option<String>,
-        temperature: f64,
-        top_p: f64,
+        temperature: Option<f64>,
+        top_p: Option<f64>,
         max_tokens: u32,
         context_length: Option<u32>,
         should_stream: bool,
@@ -111,9 +111,10 @@ pub(crate) struct OpenAIChatRequest<'a> {
     pub(crate) model: &'a str,
     pub(crate) messages: &'a Vec<Value>,
     pub(crate) stream: bool,
-    pub(crate) temperature: f64,
-    #[serde(rename = "top_p")]
-    pub(crate) top_p: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) temperature: Option<f64>,
+    #[serde(rename = "top_p", skip_serializing_if = "Option::is_none")]
+    pub(crate) top_p: Option<f64>,
     #[serde(rename = "max_tokens", skip_serializing_if = "Option::is_none")]
     pub(crate) max_tokens: Option<u32>,
     #[serde(rename = "context_length", skip_serializing_if = "Option::is_none")]

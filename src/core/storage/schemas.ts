@@ -2301,8 +2301,6 @@ export type Persona = z.infer<typeof PersonaSchema>;
 
 export function createDefaultAdvancedModelSettings(): AdvancedModelSettings {
   return {
-    temperature: 0.7,
-    topP: 1,
     maxOutputTokens: 2048,
   };
 }

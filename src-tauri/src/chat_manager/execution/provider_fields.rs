@@ -267,8 +267,12 @@ fn build_ollama_extra_fields(
         })
         .or(settings.advanced_model_settings.ollama_stop.clone());
 
-    options.insert("temperature".into(), json!(request_settings.temperature));
-    options.insert("top_p".into(), json!(request_settings.top_p));
+    if let Some(v) = request_settings.temperature {
+        options.insert("temperature".into(), json!(v));
+    }
+    if let Some(v) = request_settings.top_p {
+        options.insert("top_p".into(), json!(v));
+    }
     if let Some(v) = request_settings.top_k {
         options.insert("top_k".into(), json!(v));
     }
@@ -391,8 +395,8 @@ fn resolve_reasoning_budget(
 
 #[derive(Clone, Debug)]
 pub(crate) struct RequestSettings {
-    pub(crate) temperature: f64,
-    pub(crate) top_p: f64,
+    pub(crate) temperature: Option<f64>,
+    pub(crate) top_p: Option<f64>,
     pub(crate) max_tokens: u32,
     pub(crate) context_length: Option<u32>,
     pub(crate) frequency_penalty: Option<f64>,
@@ -435,8 +439,8 @@ impl RequestSettings {
         presence_penalty: Option<f64>,
     ) -> Self {
         Self {
-            temperature,
-            top_p,
+            temperature: Some(temperature),
+            top_p: Some(top_p),
             max_tokens,
             context_length,
             frequency_penalty,

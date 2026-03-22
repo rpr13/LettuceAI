@@ -3,8 +3,6 @@ use std::collections::HashMap;
 
 use super::types::{Model, Session, Settings};
 
-const FALLBACK_TEMPERATURE: f64 = 0.7;
-const FALLBACK_TOP_P: f64 = 1.0;
 const FALLBACK_MAX_OUTPUT_TOKENS: u32 = 4096;
 const DEFAULT_LLAMA_SAMPLER_PROFILE: &str = "balanced";
 
@@ -101,8 +99,12 @@ pub(super) fn resolve_llama_sampler_profile(
         .and_then(|value| normalize_llama_sampler_profile(&value))
 }
 
-pub(super) fn resolve_temperature(session: &Session, model: &Model, settings: &Settings) -> f64 {
-    let configured = session
+pub(super) fn resolve_temperature(
+    session: &Session,
+    model: &Model,
+    settings: &Settings,
+) -> Option<f64> {
+    if let Some(value) = session
         .advanced_model_settings
         .as_ref()
         .and_then(|cfg| cfg.temperature)
@@ -112,21 +114,21 @@ pub(super) fn resolve_temperature(session: &Session, model: &Model, settings: &S
                 .as_ref()
                 .and_then(|cfg| cfg.temperature)
         })
-        .or(settings.advanced_model_settings.temperature);
-    if let Some(value) = configured {
-        return value;
+        .or(settings.advanced_model_settings.temperature)
+    {
+        return Some(value);
     }
     if is_llama_cpp_model(model) {
-        return llama_sampler_profile_defaults(
+        return Some(llama_sampler_profile_defaults(
             resolve_llama_sampler_profile(session, model, settings).as_deref(),
         )
-        .temperature;
+        .temperature);
     }
-    FALLBACK_TEMPERATURE
+    None
 }
 
-pub(super) fn resolve_top_p(session: &Session, model: &Model, settings: &Settings) -> f64 {
-    let configured = session
+pub(super) fn resolve_top_p(session: &Session, model: &Model, settings: &Settings) -> Option<f64> {
+    if let Some(value) = session
         .advanced_model_settings
         .as_ref()
         .and_then(|cfg| cfg.top_p)
@@ -136,17 +138,17 @@ pub(super) fn resolve_top_p(session: &Session, model: &Model, settings: &Setting
                 .as_ref()
                 .and_then(|cfg| cfg.top_p)
         })
-        .or(settings.advanced_model_settings.top_p);
-    if let Some(value) = configured {
-        return value;
+        .or(settings.advanced_model_settings.top_p)
+    {
+        return Some(value);
     }
     if is_llama_cpp_model(model) {
-        return llama_sampler_profile_defaults(
+        return Some(llama_sampler_profile_defaults(
             resolve_llama_sampler_profile(session, model, settings).as_deref(),
         )
-        .top_p;
+        .top_p);
     }
-    FALLBACK_TOP_P
+    None
 }
 
 pub(super) fn resolve_max_tokens(session: &Session, model: &Model, settings: &Settings) -> u32 {

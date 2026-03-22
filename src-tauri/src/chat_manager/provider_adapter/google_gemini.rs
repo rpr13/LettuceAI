@@ -20,9 +20,10 @@ struct GeminiThinkingConfig {
 
 #[derive(Serialize)]
 struct GeminiGenerationConfig {
-    temperature: f64,
-    #[serde(rename = "topP")]
-    top_p: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(rename = "topP", skip_serializing_if = "Option::is_none")]
+    top_p: Option<f64>,
     #[serde(rename = "maxOutputTokens")]
     max_output_tokens: u32,
     #[serde(rename = "topK", skip_serializing_if = "Option::is_none")]
@@ -98,8 +99,8 @@ impl ProviderAdapter for GoogleGeminiAdapter {
         _model_name: &str,
         messages_for_api: &Vec<Value>,
         system_prompt: Option<String>,
-        temperature: f64,
-        top_p: f64,
+        temperature: Option<f64>,
+        top_p: Option<f64>,
         max_tokens: u32,
         _context_length: Option<u32>,
         _should_stream: bool,

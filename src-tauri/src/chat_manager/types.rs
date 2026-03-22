@@ -329,8 +329,8 @@ pub struct AdvancedModelSettings {
 impl Default for AdvancedModelSettings {
     fn default() -> Self {
         Self {
-            temperature: Some(0.7),
-            top_p: Some(1.0),
+            temperature: None,
+            top_p: None,
             max_output_tokens: Some(2048),
             context_length: None,
             frequency_penalty: None,

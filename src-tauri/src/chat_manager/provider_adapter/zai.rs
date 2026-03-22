@@ -12,9 +12,10 @@ pub struct ZAIAdapter;
 struct ZAIChatRequest<'a> {
     model: &'a str,
     messages: &'a Vec<Value>,
-    temperature: f64,
-    #[serde(rename = "top_p")]
-    top_p: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(rename = "top_p", skip_serializing_if = "Option::is_none")]
+    top_p: Option<f64>,
     #[serde(rename = "max_tokens")]
     max_tokens: u32,
     // ZAI supports streaming via SSE, so we expose this directly.
@@ -77,8 +78,8 @@ impl ProviderAdapter for ZAIAdapter {
         model_name: &str,
         messages_for_api: &Vec<Value>,
         _system_prompt: Option<String>,
-        temperature: f64,
-        top_p: f64,
+        temperature: Option<f64>,
+        top_p: Option<f64>,
         max_tokens: u32,
         _context_length: Option<u32>,
         should_stream: bool,

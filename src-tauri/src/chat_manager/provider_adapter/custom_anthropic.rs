@@ -65,9 +65,10 @@ impl CustomAnthropicAdapter {
 struct AnthropicMessagesRequest {
     model: String,
     messages: Vec<Value>,
-    temperature: f64,
-    #[serde(rename = "top_p")]
-    top_p: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(rename = "top_p", skip_serializing_if = "Option::is_none")]
+    top_p: Option<f64>,
     #[serde(rename = "max_tokens")]
     max_tokens: u32,
     stream: bool,
@@ -184,8 +185,8 @@ impl ProviderAdapter for CustomAnthropicAdapter {
         model_name: &str,
         messages_for_api: &Vec<Value>,
         system_prompt: Option<String>,
-        temperature: f64,
-        top_p: f64,
+        temperature: Option<f64>,
+        top_p: Option<f64>,
         max_tokens: u32,
         _context_length: Option<u32>,
         should_stream: bool,
@@ -307,7 +308,11 @@ impl ProviderAdapter for CustomAnthropicAdapter {
         let body = AnthropicMessagesRequest {
             model: model_name.to_string(),
             messages: msgs,
-            temperature: if thinking.is_some() { 1.0 } else { temperature },
+            temperature: if thinking.is_some() {
+                Some(1.0)
+            } else {
+                temperature
+            },
             top_p,
             max_tokens: total_max_tokens,
             stream: should_stream,
