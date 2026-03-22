@@ -1,4 +1,6 @@
 use super::*;
+use llama_cpp_2::llama_backend::LlamaBackend;
+use llama_cpp_2::model::params::LlamaModelParams;
 use llama_cpp_sys_2::{
     ggml_backend_dev_count, ggml_backend_dev_get, ggml_backend_dev_memory, ggml_backend_dev_type,
     GGML_BACKEND_DEVICE_TYPE_ACCEL, GGML_BACKEND_DEVICE_TYPE_GPU, GGML_BACKEND_DEVICE_TYPE_IGPU,
@@ -248,6 +250,7 @@ pub(crate) async fn llamacpp_context_info(
     llama_offload_kqv: Option<bool>,
     llama_kv_type: Option<String>,
 ) -> Result<LlamaCppContextInfo, String> {
+    let _ = app;
     if model_path.trim().is_empty() {
         return Err(crate::utils::err_msg(
             module_path!(),
@@ -263,16 +266,30 @@ pub(crate) async fn llamacpp_context_info(
         ));
     }
 
-    let engine = load_engine(Some(&app), &model_path, None)?;
-    let model = engine
-        .model
-        .as_ref()
-        .ok_or_else(|| "llama.cpp model unavailable".to_string())?;
+    let backend = LlamaBackend::init().map_err(|e| {
+        crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            format!("Failed to initialize llama backend for context info: {e}"),
+        )
+    })?;
+    let model = LlamaModel::load_from_file(
+        &backend,
+        &model_path,
+        &LlamaModelParams::default().with_n_gpu_layers(0),
+    )
+    .map_err(|e| {
+        crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            format!("Failed to load llama model for context info: {e}"),
+        )
+    })?;
     let max_ctx = model.n_ctx_train().max(1);
     let available_memory_bytes = get_available_memory_bytes();
     let available_vram_bytes = get_available_vram_bytes();
     let recommended_context_length = compute_recommended_context(
-        model,
+        &model,
         available_memory_bytes,
         available_vram_bytes,
         max_ctx,

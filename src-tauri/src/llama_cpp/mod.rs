@@ -82,6 +82,54 @@ mod desktop {
             })
     }
 
+    fn parse_stop_sequences(body: &Value) -> Vec<String> {
+        fn parse_value(value: &Value) -> Vec<String> {
+            match value {
+                Value::String(text) => {
+                    let trimmed = text.trim();
+                    if trimmed.is_empty() {
+                        Vec::new()
+                    } else {
+                        vec![trimmed.to_string()]
+                    }
+                }
+                Value::Array(values) => values
+                    .iter()
+                    .filter_map(|value| value.as_str())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToOwned::to_owned)
+                    .collect(),
+                _ => Vec::new(),
+            }
+        }
+
+        parse_value(
+            body.get("stop")
+                .or_else(|| body.get("stopSequences"))
+                .or_else(|| body.get("stop_sequences"))
+                .unwrap_or(&Value::Null),
+        )
+    }
+
+    fn earliest_stop_match<'a>(
+        text: &str,
+        stop_sequences: &'a [String],
+    ) -> Option<(usize, &'a str)> {
+        stop_sequences
+            .iter()
+            .filter_map(|stop| text.find(stop).map(|index| (index, stop.as_str())))
+            .min_by_key(|(index, _)| *index)
+    }
+
+    fn clamp_to_char_boundary(text: &str, index: usize) -> usize {
+        let mut clamped = index.min(text.len());
+        while clamped > 0 && !text.is_char_boundary(clamped) {
+            clamped -= 1;
+        }
+        clamped
+    }
+
     pub async fn handle_local_request(
         app: AppHandle,
         req: ApiRequest,
@@ -251,6 +299,12 @@ mod desktop {
             .and_then(|v| v.as_u64())
             .and_then(|v| u32::try_from(v).ok())
             .filter(|v| *v > 0);
+        let stop_sequences = parse_stop_sequences(body);
+        let max_stop_sequence_len = stop_sequences
+            .iter()
+            .map(|stop| stop.len())
+            .max()
+            .unwrap_or(0);
 
         let request_id = req.request_id.clone();
         let stream = req.stream.unwrap_or(false);
@@ -277,6 +331,7 @@ mod desktop {
         let mut first_token_ms: Option<u64> = None;
         let mut generation_elapsed_ms: Option<u64> = None;
         let mut finish_reason = "stop";
+        let mut stream_emitted_len = 0usize;
 
         let result = (|| -> Result<(), String> {
             log_info(&app, "llama_cpp", "loading llama.cpp engine/model");
@@ -733,7 +788,44 @@ mod desktop {
 
                 if !piece.is_empty() {
                     output.push_str(&piece);
-                    if stream {
+                    if let Some((stop_index, _)) = earliest_stop_match(&output, &stop_sequences) {
+                        output.truncate(stop_index);
+                        if stream && stream_emitted_len < output.len() {
+                            if let Some(ref id) = request_id {
+                                transport::emit_normalized(
+                                    &app,
+                                    id,
+                                    NormalizedEvent::Delta {
+                                        text: output[stream_emitted_len..].to_string(),
+                                    },
+                                );
+                            }
+                            stream_emitted_len = output.len();
+                        }
+                        finish_reason = "stop";
+                        break;
+                    }
+
+                    if stream && max_stop_sequence_len > 0 {
+                        let safe_emit_end = clamp_to_char_boundary(
+                            &output,
+                            output
+                                .len()
+                                .saturating_sub(max_stop_sequence_len.saturating_sub(1)),
+                        );
+                        if safe_emit_end > stream_emitted_len {
+                            if let Some(ref id) = request_id {
+                                transport::emit_normalized(
+                                    &app,
+                                    id,
+                                    NormalizedEvent::Delta {
+                                        text: output[stream_emitted_len..safe_emit_end].to_string(),
+                                    },
+                                );
+                            }
+                            stream_emitted_len = safe_emit_end;
+                        }
+                    } else if stream {
                         if let Some(ref id) = request_id {
                             transport::emit_normalized(
                                 &app,
@@ -741,6 +833,7 @@ mod desktop {
                                 NormalizedEvent::Delta { text: piece },
                             );
                         }
+                        stream_emitted_len = output.len();
                     }
                 }
 
@@ -771,16 +864,30 @@ mod desktop {
             if !pending_utf8.is_empty() {
                 let tail = String::from_utf8_lossy(&pending_utf8).to_string();
                 output.push_str(&tail);
-                if stream {
-                    if let Some(ref id) = request_id {
-                        transport::emit_normalized(&app, id, NormalizedEvent::Delta { text: tail });
-                    }
+                if let Some((stop_index, _)) = earliest_stop_match(&output, &stop_sequences) {
+                    output.truncate(stop_index);
+                    finish_reason = "stop";
                 }
+            }
+
+            if stream && stream_emitted_len < output.len() {
+                if let Some(ref id) = request_id {
+                    transport::emit_normalized(
+                        &app,
+                        id,
+                        NormalizedEvent::Delta {
+                            text: output[stream_emitted_len..].to_string(),
+                        },
+                    );
+                }
+                stream_emitted_len = output.len();
             }
 
             generation_elapsed_ms = Some(inference_started_at.elapsed().as_millis() as u64);
 
-            finish_reason = if reached_eos { "stop" } else { "length" };
+            if finish_reason != "stop" {
+                finish_reason = if reached_eos { "stop" } else { "length" };
+            }
 
             Ok(())
         })();
