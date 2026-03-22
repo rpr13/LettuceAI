@@ -8,6 +8,7 @@ pub mod messages;
 pub mod prompt_engine;
 pub mod prompts;
 pub mod provider_adapter;
+pub mod reply_helper;
 pub mod repository;
 pub mod request;
 pub mod request_builder;
