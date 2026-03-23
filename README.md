@@ -12,6 +12,29 @@
 
 This repository contains the LettuceAI application. LettuceAI is a privacy-first, cross‑platform roleplay and storytelling app built with Tauri v2, React, and TypeScript. It runs locally, keeps data on‑device, and lets users bring their own API keys and models.
 
+## Screenshots
+
+### Core Experience
+
+| Chat | Character Editor |
+| --- | --- |
+| ![Chat screen](docs/readme/chat.png) | ![Character editor](docs/readme/character_editor.png) |
+| Live roleplay chat with character-aware UI. | Build and refine character identity, definition, and avatar. |
+
+| Memory | Image Generation |
+| --- | --- |
+| ![Memory screen](docs/readme/memory.png) | ![Image prompt and result](docs/readme/image_prompt.png) |
+| Review context summaries and manage saved memories. | Generate character visuals directly from prompts. |
+
+### Advanced Controls
+
+| Models | System Prompt Editor |
+| --- | --- |
+| ![Models screen](docs/readme/models.png) | ![System prompt editor](docs/readme/system_prompt_editor.png) |
+| Configure local or remote model backends. | Edit structured prompt templates and variables. |
+
+Screenshots feature “King Cassian” by [jawawgf](https://character-tavern.com/character/jawawgf/king_cassian), used for demonstration.
+
 ## Install
 
 ### Prerequisites
