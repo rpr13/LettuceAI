@@ -145,6 +145,7 @@ export const idMessages: DeepPartialMessageTree<LocaleMessages> = {
     items: {
       providers: { title: "Penyedia", subtitle: "Hubungkan ke layanan AI" },
       models: { title: "Model", subtitle: "Konfigurasi model AI" },
+      imageGeneration: { title: "Pembuatan Gambar", subtitle: "Hasilkan dan uji gambar" },
       voices: { title: "Suara", subtitle: "Suara teks-ke-ucapan" },
       accessibility: { title: "Aksesibilitas", subtitle: "Isyarat suara & haptik" },
       prompts: { title: "Prompt Sistem", subtitle: "Bentuk kepribadian AI" },
@@ -235,6 +236,14 @@ export const idMessages: DeepPartialMessageTree<LocaleMessages> = {
       chooseImage: "Pilih Gambar",
       chooseImageDesc: "Pilih dari perangkat Anda",
     },
+    avatarCurrentEdit: {
+      title: "Sunting Saat Ini",
+      reposition: "Reposisi",
+      repositionDesc: "Pindahkan atau pangkas avatar saat ini",
+      editWithAI: "Edit dengan AI",
+      editWithAIDesc: "Buka pengeditan AI untuk avatar saat ini",
+      noImageModels: "Tidak ada model gambar yang tersedia",
+    },
     avatarGeneration: {
       modelsLoadError: "Gagal memuat model pembuatan gambar",
       title: "Hasilkan Avatar",
@@ -244,6 +253,19 @@ export const idMessages: DeepPartialMessageTree<LocaleMessages> = {
       describe: "Deskripsikan avatar Anda",
       describePlaceholder: "Gadis anime ramah dengan rambut berwarna-warni, tersenyum hangat...",
       inProgress: "Menghasilkan avatar...",
+      editingInProgress: "Menerapkan pengeditan avatar...",
+      previousVariant: "Varian sebelumnya",
+      nextVariant: "Varian selanjutnya",
+      variantCounter: "{{current}} / {{total}}",
+      editRequest: "Sunting permintaan",
+      editRequestPlaceholder: "Membuat rambut lebih gelap, menambahkan kacamata, menjaga wajah tetap sama...",
+      applyEdit: "Terapkan Sunting",
+      editImageLoadError: "Gagal menyiapkan avatar yang dihasilkan untuk diedit",
+      aiAssistant: "Asisten AI",
+      backToResults: "Kembali ke perintah",
+      magicInTheWorks: "Keajaiban sedang bekerja...",
+      refine: "Menyaring",
+      apply: "Menerapkan",
       alt: "Avatar yang dihasilkan",
       regenerate: "Hasilkan Ulang",
       useThis: "Gunakan Ini",
@@ -273,6 +295,9 @@ export const idMessages: DeepPartialMessageTree<LocaleMessages> = {
       searchPlaceholder: "Cari model...",
       noResults: "Tidak ada model ditemukan",
       noResultsHint: "Coba kata pencarian yang berbeda",
+    },
+    localeSelector: {
+      title: "Pilih Bahasa",
     },
     promptTemplate: {
       nameContentRequired: "Nama dan konten wajib diisi",
@@ -500,6 +525,26 @@ export const idMessages: DeepPartialMessageTree<LocaleMessages> = {
     swapPlacesOn: "Tukar Posisi (Aktif)",
     uploadImage: "Unggah Gambar",
     helpMeReply: "Bantu Saya Balas",
+    sceneImage: {
+      modeTitle: "Gambar Adegan",
+      modeDescription:
+        "Pilih apakah akan menulis sendiri adegan itu atau biarkan AI menyusunnya terlebih dahulu.",
+      writePrompt: "Tulis perintah",
+      writePromptDesc: "Ketik perintah gambar pemandangan yang ingin Anda gunakan.",
+      askAi: "Tanya AI",
+      askAiDesc: "Biarkan model obrolan saat ini membuat draf adegan dari momen yang dipilih.",
+      generateTitle: "Hasilkan Gambar Pemandangan",
+      regenerateTitle: "Regenerasi Gambar Pemandangan",
+      aiTitle: "Perintah Adegan AI",
+      promptLabel: "ADEGAN CEPAT",
+      promptPlaceholder:
+        "Jelaskan adegan, karakter, suasana hati, pencahayaan, bingkai kamera, dan detail penting...",
+      suggestedPrompt: "Perintah yang disarankan",
+      regeneratePrompt: "Diperbarui",
+      editPrompt: "Edit perintah",
+      generateImage: "Hasilkan Gambar",
+      updateImage: "Perbarui Gambar",
+    },
     useMyTextAsBase: "Gunakan teks saya sebagai dasar",
     writeNewReply: "Tulis sesuatu yang baru",
     suggestedReply: "Balasan yang Disarankan",
@@ -633,6 +678,8 @@ export const idMessages: DeepPartialMessageTree<LocaleMessages> = {
       branchFromHere: "Cabang dari sini",
       branchToGroupChat: "Cabang ke obrolan grup",
       branchToCharacter: "Cabang ke karakter",
+      generateSceneImage: "Hasilkan gambar pemandangan",
+      regenerateSceneImage: "Regenerasi gambar pemandangan",
       chatAppearance: "Tampilan Obrolan",
       delete: "Hapus",
       unpinToDelete: "Lepas sematkan untuk menghapus",
@@ -1785,11 +1832,27 @@ export const idMessages: DeepPartialMessageTree<LocaleMessages> = {
       size: "UKURAN",
       quality: "KUALITAS",
       style: "GAYA",
+      searchModels: "Telusuri model...",
+      selectAvatarModel: "Pilih Model Avatar",
+      selectSceneModel: "Pilih Model Pemandangan",
+      useFirstAvailable: "Gunakan model pertama yang tersedia",
     },
     empty: {
       title: "Tidak Ada Model Gambar",
       description:
         "Tambahkan model pembuatan gambar dari halaman Model untuk mulai menghasilkan gambar.",
+    },
+    sections: {
+      avatar: {
+        title: "Generasi Avatar",
+        description:
+          "Model default yang digunakan saat membuat avatar dari pemilih avatar atau alur gambar profil terkait.",
+      },
+      scene: {
+        title: "Pembuatan Adegan",
+        description:
+          "Model yang dicadangkan untuk gambar adegan yang dihasilkan dari konteks percakapan atau petunjuk adegan.",
+      },
     },
   },
 
@@ -1806,6 +1869,7 @@ export const idMessages: DeepPartialMessageTree<LocaleMessages> = {
       testDataGenerators: "Generator Data Tes",
       storageMaintenance: "Pemeliharaan Penyimpanan",
       usageTracking: "Pelacakan Penggunaan",
+      crashTesting: "Pengujian Kecelakaan",
       environmentInfo: "Info Lingkungan",
     },
     testData: {
@@ -1828,6 +1892,12 @@ export const idMessages: DeepPartialMessageTree<LocaleMessages> = {
       recalculateAll: "Hitung Ulang Semua Biaya Penggunaan",
       recalculateAllDesc:
         "Ambil ulang harga dan hitung ulang biaya untuk semua catatan penggunaan OpenRouter",
+    },
+    crashTesting: {
+      forceCrash: "Hancurkan Aplikasi Sekarang",
+      forceCrashDesc: "Segera menghentikan proses aplikasi asli untuk menguji deteksi kerusakan",
+      forceCrashConfirm:
+        "Ini akan segera membuat aplikasi mogok untuk menguji detektor kerusakan. Melanjutkan?",
     },
     environmentInfo: {
       mode: "Mode",
@@ -2474,6 +2544,8 @@ export const idMessages: DeepPartialMessageTree<LocaleMessages> = {
     status: {
       connecting: "Menghubungkan...",
       connected: "Terhubung",
+      waitingConfirmation: "Menunggu kepastian",
+      waitingConfirmationDesc: "Setujui koneksi pada perangkat host untuk melanjutkan.",
       syncing: "Menyinkronkan...",
       transferringData: "Mentransfer data",
       syncInProgress: "Sinkronisasi Berlangsung",

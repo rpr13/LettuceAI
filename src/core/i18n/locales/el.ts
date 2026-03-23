@@ -145,6 +145,7 @@ export const elMessages: DeepPartialMessageTree<LocaleMessages> = {
     items: {
       providers: { title: "Πάροχοι", subtitle: "Σύνδεση σε υπηρεσίες AI" },
       models: { title: "Μοντέλα", subtitle: "Ρύθμιση μοντέλων AI" },
+      imageGeneration: { title: "Δημιουργία εικόνων", subtitle: "Δημιουργήστε και δοκιμάστε εικόνες" },
       voices: { title: "Φωνές", subtitle: "Φωνές μετατροπής κειμένου σε ομιλία" },
       accessibility: { title: "Προσβασιμότητα", subtitle: "Ηχητικά σήματα & απτική ανάδραση" },
       prompts: { title: "Προτροπές Συστήματος", subtitle: "Διαμόρφωση προσωπικότητας AI" },
@@ -235,6 +236,14 @@ export const elMessages: DeepPartialMessageTree<LocaleMessages> = {
       chooseImage: "Επιλογή Εικόνας",
       chooseImageDesc: "Επιλέξτε από τη συσκευή σας",
     },
+    avatarCurrentEdit: {
+      title: "Επεξεργασία ρεύματος",
+      reposition: "Επανατοποθέτηση",
+      repositionDesc: "Μετακινήστε ή περικόψτε το τρέχον avatar",
+      editWithAI: "Επεξεργασία με AI",
+      editWithAIDesc: "Ανοίξτε την επεξεργασία AI για το τρέχον avatar",
+      noImageModels: "Δεν υπάρχουν διαθέσιμα μοντέλα εικόνας",
+    },
     avatarGeneration: {
       modelsLoadError: "Αποτυχία φόρτωσης μοντέλων δημιουργίας εικόνας",
       title: "Δημιουργία Avatar",
@@ -244,6 +253,19 @@ export const elMessages: DeepPartialMessageTree<LocaleMessages> = {
       describe: "Περιγράψτε το avatar σας",
       describePlaceholder: "Ένα φιλικό κορίτσι anime με πολύχρωμα μαλλιά, χαμογελώντας ζεστά...",
       inProgress: "Δημιουργία avatar...",
+      editingInProgress: "Εφαρμογή επεξεργασίας avatar...",
+      previousVariant: "Προηγούμενη παραλλαγή",
+      nextVariant: "Επόμενη παραλλαγή",
+      variantCounter: "{{current}} / {{total}}",
+      editRequest: "Επεξεργασία αιτήματος",
+      editRequestPlaceholder: "Κάντε τα μαλλιά πιο σκούρα, προσθέστε γυαλιά, διατηρήστε το πρόσωπο ίδιο...",
+      applyEdit: "Εφαρμογή Επεξεργασίας",
+      editImageLoadError: "Αποτυχία προετοιμασίας του avatar που δημιουργήθηκε για επεξεργασία",
+      aiAssistant: "Βοηθός AI",
+      backToResults: "Επιστροφή στην προτροπή",
+      magicInTheWorks: "Η μαγεία στα σκαριά...",
+      refine: "Διυλίζω",
+      apply: "Εφαρμόζω",
       alt: "Δημιουργημένο avatar",
       regenerate: "Αναδημιουργία",
       useThis: "Χρήση Αυτού",
@@ -273,6 +295,9 @@ export const elMessages: DeepPartialMessageTree<LocaleMessages> = {
       searchPlaceholder: "Αναζήτηση μοντέλων...",
       noResults: "Δεν βρέθηκαν μοντέλα",
       noResultsHint: "Δοκιμάστε διαφορετικό όρο αναζήτησης",
+    },
+    localeSelector: {
+      title: "Επιλέξτε Γλώσσα",
     },
     promptTemplate: {
       nameContentRequired: "Απαιτούνται όνομα και περιεχόμενο",
@@ -505,6 +530,26 @@ export const elMessages: DeepPartialMessageTree<LocaleMessages> = {
     swapPlacesOn: "Εναλλαγή Θέσεων (Ενεργό)",
     uploadImage: "Μεταφόρτωση Εικόνας",
     helpMeReply: "Βοήθησέ με να Απαντήσω",
+    sceneImage: {
+      modeTitle: "Εικόνα σκηνής",
+      modeDescription:
+        "Επιλέξτε εάν θα γράψετε μόνοι σας το μήνυμα της σκηνής ή θα αφήσετε το AI να το σχεδιάσει πρώτα.",
+      writePrompt: "Προτροπή εγγραφής",
+      writePromptDesc: "Πληκτρολογήστε το ακριβές μήνυμα εικόνας σκηνής που θέλετε να χρησιμοποιήσετε.",
+      askAi: "Ρωτήστε το AI",
+      askAiDesc: "Αφήστε το τρέχον μοντέλο συνομιλίας να σχεδιάσει μια προτροπή σκηνής από την επιλεγμένη στιγμή.",
+      generateTitle: "Δημιουργία εικόνας σκηνής",
+      regenerateTitle: "Αναγέννηση εικόνας σκηνής",
+      aiTitle: "Προτροπή σκηνής AI",
+      promptLabel: "ΣΚΗΝΙΚΗ ΠΡΟΤΑΣΗ",
+      promptPlaceholder:
+        "Περιγράψτε τη σκηνή, τους χαρακτήρες, τη διάθεση, τον φωτισμό, το καδράρισμα της κάμερας και σημαντικές λεπτομέρειες...",
+      suggestedPrompt: "Προτεινόμενη προτροπή",
+      regeneratePrompt: "Αναγεννηθείς",
+      editPrompt: "Επεξεργασία προτροπής",
+      generateImage: "Δημιουργία εικόνας",
+      updateImage: "Ενημέρωση εικόνας",
+    },
     useMyTextAsBase: "Χρήση του κειμένου μου ως βάση",
     writeNewReply: "Γράψε κάτι νέο",
     suggestedReply: "Προτεινόμενη Απάντηση",
@@ -639,6 +684,8 @@ export const elMessages: DeepPartialMessageTree<LocaleMessages> = {
       branchFromHere: "Διακλάδωση από εδώ",
       branchToGroupChat: "Διακλάδωση σε ομαδική συνομιλία",
       branchToCharacter: "Διακλάδωση σε χαρακτήρα",
+      generateSceneImage: "Δημιουργία εικόνας σκηνής",
+      regenerateSceneImage: "Αναγέννηση εικόνας σκηνής",
       chatAppearance: "Εμφάνιση Συνομιλίας",
       delete: "Διαγραφή",
       unpinToDelete: "Ξεκαρφιτσώστε για διαγραφή",
@@ -1799,10 +1846,26 @@ export const elMessages: DeepPartialMessageTree<LocaleMessages> = {
       size: "ΜΕΓΕΘΟΣ",
       quality: "ΠΟΙΟΤΗΤΑ",
       style: "ΣΤΥΛ",
+      searchModels: "Αναζήτηση μοντέλων...",
+      selectAvatarModel: "Επιλέξτε Μοντέλο Avatar",
+      selectSceneModel: "Επιλέξτε Μοντέλο σκηνής",
+      useFirstAvailable: "Χρησιμοποιήστε το πρώτο διαθέσιμο μοντέλο",
     },
     empty: {
       title: "Δεν υπάρχουν Μοντέλα Εικόνας",
       description: "Προσθέστε μοντέλο δημιουργίας εικόνας από τη σελίδα Μοντέλα για να ξεκινήσετε.",
+    },
+    sections: {
+      avatar: {
+        title: "Γενιά Avatar",
+        description:
+          "Προεπιλεγμένο μοντέλο που χρησιμοποιείται κατά τη δημιουργία avatar από το εργαλείο επιλογής avatar ή σχετικές ροές εικόνας προφίλ.",
+      },
+      scene: {
+        title: "Γενιά Σκηνής",
+        description:
+          "Δεσμευμένο μοντέλο για εικόνες σκηνής που δημιουργούνται από περιβάλλον συνομιλίας ή προτροπές σκηνής.",
+      },
     },
   },
 
@@ -1819,6 +1882,7 @@ export const elMessages: DeepPartialMessageTree<LocaleMessages> = {
       testDataGenerators: "Γεννήτριες Δοκιμαστικών Δεδομένων",
       storageMaintenance: "Συντήρηση Αποθήκευσης",
       usageTracking: "Παρακολούθηση Χρήσης",
+      crashTesting: "Crash Testing",
       environmentInfo: "Πληροφορίες Περιβάλλοντος",
     },
     testData: {
@@ -1841,6 +1905,12 @@ export const elMessages: DeepPartialMessageTree<LocaleMessages> = {
       recalculateAll: "Επανυπολογισμός Όλων των Κοστών Χρήσης",
       recalculateAllDesc:
         "Ανάκτηση τιμολόγησης και επανυπολογισμός κοστών για όλες τις εγγραφές χρήσης OpenRouter",
+    },
+    crashTesting: {
+      forceCrash: "Διακοπή εφαρμογής τώρα",
+      forceCrashDesc: "Τερματίζει αμέσως τη διαδικασία εγγενούς εφαρμογής για να δοκιμάσει τον εντοπισμό σφαλμάτων",
+      forceCrashConfirm:
+        "Αυτό θα διακόψει αμέσως την εφαρμογή για να δοκιμάσει τον ανιχνευτή σύγκρουσης. Συνεχίζω;",
     },
     environmentInfo: {
       mode: "Λειτουργία",
@@ -2489,6 +2559,8 @@ export const elMessages: DeepPartialMessageTree<LocaleMessages> = {
     status: {
       connecting: "Σύνδεση...",
       connected: "Συνδεδεμένο",
+      waitingConfirmation: "Αναμονή για επιβεβαίωση",
+      waitingConfirmationDesc: "Εγκρίνετε τη σύνδεση στη συσκευή υποδοχής για να συνεχίσετε.",
       syncing: "Συγχρονισμός...",
       transferringData: "Μεταφορά δεδομένων",
       syncInProgress: "Συγχρονισμός σε Εξέλιξη",

@@ -145,6 +145,7 @@ export const zhHantMessages: DeepPartialMessageTree<LocaleMessages> = {
     items: {
       providers: { title: "供應商", subtitle: "連接 AI 服務" },
       models: { title: "模型", subtitle: "設定 AI 模型" },
+      imageGeneration: { title: "影像生成", subtitle: "生成並測試圖像" },
       voices: { title: "語音", subtitle: "文字轉語音" },
       accessibility: { title: "無障礙", subtitle: "音效與觸覺回饋" },
       prompts: { title: "系統提示", subtitle: "塑造 AI 個性" },
@@ -235,6 +236,14 @@ export const zhHantMessages: DeepPartialMessageTree<LocaleMessages> = {
       chooseImage: "選擇圖片",
       chooseImageDesc: "從裝置中選擇",
     },
+    avatarCurrentEdit: {
+      title: "編輯目前",
+      reposition: "復位",
+      repositionDesc: "移動或裁剪當前頭像",
+      editWithAI: "用人工智慧編輯",
+      editWithAIDesc: "開啟目前頭像的AI編輯",
+      noImageModels: "沒有可用的圖像模型",
+    },
     avatarGeneration: {
       modelsLoadError: "無法載入圖片生成模型",
       title: "生成頭像",
@@ -244,6 +253,19 @@ export const zhHantMessages: DeepPartialMessageTree<LocaleMessages> = {
       describe: "描述您的頭像",
       describePlaceholder: "一位友善的動漫女孩，彩色頭髮，溫暖微笑...",
       inProgress: "正在生成頭像...",
+      editingInProgress: "正在套用頭像編輯...",
+      previousVariant: "以前的變體",
+      nextVariant: "下一個變體",
+      variantCounter: "{{current}} / {{total}}",
+      editRequest: "編輯請求",
+      editRequestPlaceholder: "把頭髮變黑，戴上眼鏡，保持臉型不變…",
+      applyEdit: "應用程式編輯",
+      editImageLoadError: "無法準備生成的頭像進行編輯",
+      aiAssistant: "人工智慧助手",
+      backToResults: "回傳提示",
+      magicInTheWorks: "作品中的魔法...",
+      refine: "精煉",
+      apply: "申請",
       alt: "生成的頭像",
       regenerate: "重新生成",
       useThis: "使用此頭像",
@@ -273,6 +295,9 @@ export const zhHantMessages: DeepPartialMessageTree<LocaleMessages> = {
       searchPlaceholder: "搜尋模型...",
       noResults: "找不到模型",
       noResultsHint: "請嘗試不同的搜尋關鍵字",
+    },
+    localeSelector: {
+      title: "選擇語言",
     },
     promptTemplate: {
       nameContentRequired: "名稱與內容為必填",
@@ -490,6 +515,26 @@ export const zhHantMessages: DeepPartialMessageTree<LocaleMessages> = {
     swapPlacesOn: "交換位置（開啟）",
     uploadImage: "上傳圖片",
     helpMeReply: "幫我回覆",
+    sceneImage: {
+      modeTitle: "場景影像",
+      modeDescription:
+        "選擇自己寫場景提示還是讓 AI 先起草。",
+      writePrompt: "寫提示",
+      writePromptDesc: "輸入您要使用的確切場景影像提示。",
+      askAi: "詢問人工智慧",
+      askAiDesc: "讓目前的聊天模型從所選時刻起草一個場景提示。",
+      generateTitle: "生成場景影像",
+      regenerateTitle: "重新生成場景影像",
+      aiTitle: "AI場景提示",
+      promptLabel: "場景提示",
+      promptPlaceholder:
+        "描述場景、人物、情緒、燈光、鏡頭取景和重要細節…",
+      suggestedPrompt: "建議提示",
+      regeneratePrompt: "再生",
+      editPrompt: "編輯提示",
+      generateImage: "產生影像",
+      updateImage: "更新圖片",
+    },
     useMyTextAsBase: "以我的文字為基礎",
     writeNewReply: "撰寫新回覆",
     suggestedReply: "建議回覆",
@@ -623,6 +668,8 @@ export const zhHantMessages: DeepPartialMessageTree<LocaleMessages> = {
       branchFromHere: "從此處分支",
       branchToGroupChat: "分支到群組對話",
       branchToCharacter: "分支到角色",
+      generateSceneImage: "生成場景影像",
+      regenerateSceneImage: "重新生成場景影像",
       chatAppearance: "對話外觀",
       delete: "刪除",
       unpinToDelete: "取消釘選後才能刪除",
@@ -1752,10 +1799,26 @@ export const zhHantMessages: DeepPartialMessageTree<LocaleMessages> = {
       size: "尺寸",
       quality: "品質",
       style: "風格",
+      searchModels: "搜尋型號...",
+      selectAvatarModel: "選擇頭像模型",
+      selectSceneModel: "選擇場景模型",
+      useFirstAvailable: "使用第一個可用模型",
     },
     empty: {
       title: "沒有圖片模型",
       description: "從模型頁面新增圖片生成模型以開始生成圖片。",
+    },
+    sections: {
+      avatar: {
+        title: "阿凡達一代",
+        description:
+          "從頭像選擇器或相關個人資料圖像流產生頭像時使用的預設模型。",
+      },
+      scene: {
+        title: "場景生成",
+        description:
+          "為從對話情境或場景提示產生的場景影像保留的模型。",
+      },
     },
   },
 
@@ -1772,6 +1835,7 @@ export const zhHantMessages: DeepPartialMessageTree<LocaleMessages> = {
       testDataGenerators: "測試資料生成器",
       storageMaintenance: "儲存維護",
       usageTracking: "使用追蹤",
+      crashTesting: "碰撞測試",
       environmentInfo: "環境資訊",
     },
     testData: {
@@ -1793,6 +1857,12 @@ export const zhHantMessages: DeepPartialMessageTree<LocaleMessages> = {
     usageTracking: {
       recalculateAll: "重新計算所有使用成本",
       recalculateAllDesc: "重新擷取定價並重新計算所有 OpenRouter 使用記錄的成本",
+    },
+    crashTesting: {
+      forceCrash: "立即崩潰應用程式",
+      forceCrashDesc: "立即終止本機應用程式進程以測試崩潰偵測",
+      forceCrashConfirm:
+        "這將立即使應用程式崩潰以測試崩潰檢測器。繼續？",
     },
     environmentInfo: {
       mode: "模式",
@@ -2425,6 +2495,8 @@ export const zhHantMessages: DeepPartialMessageTree<LocaleMessages> = {
     status: {
       connecting: "連線中...",
       connected: "已連線",
+      waitingConfirmation: "等待確認",
+      waitingConfirmationDesc: "批准主機設備上的連線以繼續。",
       syncing: "同步中...",
       transferringData: "傳輸資料",
       syncInProgress: "同步進行中",

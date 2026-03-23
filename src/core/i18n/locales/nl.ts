@@ -145,6 +145,7 @@ export const nlMessages: DeepPartialMessageTree<LocaleMessages> = {
     items: {
       providers: { title: "Providers", subtitle: "Verbind met AI-diensten" },
       models: { title: "Modellen", subtitle: "AI-modellen configureren" },
+      imageGeneration: { title: "Beeld genereren", subtitle: "Afbeeldingen genereren en testen" },
       voices: { title: "Stemmen", subtitle: "Tekst-naar-spraak stemmen" },
       accessibility: { title: "Toegankelijkheid", subtitle: "Geluids- & haptische feedback" },
       prompts: { title: "Systeemprompts", subtitle: "AI-persoonlijkheid vormgeven" },
@@ -238,6 +239,14 @@ export const nlMessages: DeepPartialMessageTree<LocaleMessages> = {
       chooseImage: "Afbeelding kiezen",
       chooseImageDesc: "Selecteer van je apparaat",
     },
+    avatarCurrentEdit: {
+      title: "Huidig ​​bewerken",
+      reposition: "Herpositioneren",
+      repositionDesc: "Verplaats of snijd de huidige avatar bij",
+      editWithAI: "Bewerken met AI",
+      editWithAIDesc: "Open AI-bewerking voor de huidige avatar",
+      noImageModels: "Geen afbeeldingsmodellen beschikbaar",
+    },
     avatarGeneration: {
       modelsLoadError: "Kan afbeeldingsgeneratiemodellen niet laden",
       title: "Avatar genereren",
@@ -247,6 +256,19 @@ export const nlMessages: DeepPartialMessageTree<LocaleMessages> = {
       describe: "Beschrijf je avatar",
       describePlaceholder: "Een vriendelijk animemeisje met kleurrijk haar, warm glimlachend...",
       inProgress: "Avatar genereren...",
+      editingInProgress: "Avatar bewerken toepassen...",
+      previousVariant: "Vorige variant",
+      nextVariant: "Volgende variant",
+      variantCounter: "{{current}} / {{total}}",
+      editRequest: "Verzoek bewerken",
+      editRequestPlaceholder: "Maak het haar donkerder, voeg een bril toe, houd het gezicht hetzelfde...",
+      applyEdit: "Toepassen Bewerken",
+      editImageLoadError: "Kan de gegenereerde avatar niet voorbereiden voor bewerking",
+      aiAssistant: "AI-assistent",
+      backToResults: "Terug naar prompt",
+      magicInTheWorks: "Magie in de maak...",
+      refine: "Verfijnen",
+      apply: "Toepassen",
       alt: "Gegenereerde avatar",
       regenerate: "Opnieuw genereren",
       useThis: "Gebruik deze",
@@ -276,6 +298,9 @@ export const nlMessages: DeepPartialMessageTree<LocaleMessages> = {
       searchPlaceholder: "Modellen zoeken...",
       noResults: "Geen modellen gevonden",
       noResultsHint: "Probeer een andere zoekterm",
+    },
+    localeSelector: {
+      title: "Selecteer Taal",
     },
     promptTemplate: {
       nameContentRequired: "Naam en inhoud zijn vereist",
@@ -508,6 +533,26 @@ export const nlMessages: DeepPartialMessageTree<LocaleMessages> = {
     swapPlacesOn: "Wisselen van plaats (Aan)",
     uploadImage: "Afbeelding uploaden",
     helpMeReply: "Help me antwoorden",
+    sceneImage: {
+      modeTitle: "Scène afbeelding",
+      modeDescription:
+        "Kies of u de scèneprompt zelf wilt schrijven of dat u deze eerst door de AI wilt laten opstellen.",
+      writePrompt: "Schrijf prompt",
+      writePromptDesc: "Typ de exacte scènebeeldprompt die u wilt gebruiken.",
+      askAi: "Vraag het AI",
+      askAiDesc: "Laat het huidige chatmodel een scèneprompt opstellen vanaf het geselecteerde moment.",
+      generateTitle: "Genereer een scèneafbeelding",
+      regenerateTitle: "Scèneafbeelding opnieuw genereren",
+      aiTitle: "AI-scèneprompt",
+      promptLabel: "SCÈNE PROMPT",
+      promptPlaceholder:
+        "Beschrijf de scène, personages, sfeer, belichting, camerakader en belangrijke details...",
+      suggestedPrompt: "Voorgestelde prompt",
+      regeneratePrompt: "Regenereer",
+      editPrompt: "Prompt bewerken",
+      generateImage: "Genereer afbeelding",
+      updateImage: "Afbeelding bijwerken",
+    },
     useMyTextAsBase: "Gebruik mijn tekst als basis",
     writeNewReply: "Schrijf iets nieuws",
     suggestedReply: "Voorgesteld antwoord",
@@ -642,6 +687,8 @@ export const nlMessages: DeepPartialMessageTree<LocaleMessages> = {
       branchFromHere: "Vertakken vanaf hier",
       branchToGroupChat: "Vertakken naar groepschat",
       branchToCharacter: "Vertakken naar karakter",
+      generateSceneImage: "Genereer een scèneafbeelding",
+      regenerateSceneImage: "Scènebeeld opnieuw genereren",
       chatAppearance: "Chatuiterlijk",
       delete: "Verwijderen",
       unpinToDelete: "Losmaken om te verwijderen",
@@ -1797,11 +1844,27 @@ export const nlMessages: DeepPartialMessageTree<LocaleMessages> = {
       size: "FORMAAT",
       quality: "KWALITEIT",
       style: "STIJL",
+      searchModels: "Modellen zoeken...",
+      selectAvatarModel: "Selecteer Avatarmodel",
+      selectSceneModel: "Selecteer Scènemodel",
+      useFirstAvailable: "Gebruik het eerst beschikbare model",
     },
     empty: {
       title: "Geen afbeeldingsmodellen",
       description:
         "Voeg een afbeeldingsgeneratiemodel toe via de Modellen-pagina om afbeeldingen te genereren.",
+    },
+    sections: {
+      avatar: {
+        title: "Avatar-generatie",
+        description:
+          "Standaardmodel dat wordt gebruikt bij het genereren van avatars vanuit de avatarkiezer of gerelateerde profielafbeeldingsstromen.",
+      },
+      scene: {
+        title: "Scène genereren",
+        description:
+          "Gereserveerd model voor scènebeelden gegenereerd op basis van gesprekscontext of scène-aanwijzingen.",
+      },
     },
   },
 
@@ -1818,6 +1881,7 @@ export const nlMessages: DeepPartialMessageTree<LocaleMessages> = {
       testDataGenerators: "Testgegevensgeneratoren",
       storageMaintenance: "Opslagonderhoud",
       usageTracking: "Gebruikstracking",
+      crashTesting: "Crashtesten",
       environmentInfo: "Omgevingsinformatie",
     },
     testData: {
@@ -1840,6 +1904,12 @@ export const nlMessages: DeepPartialMessageTree<LocaleMessages> = {
       recalculateAll: "Alle gebruikskosten herberekenen",
       recalculateAllDesc:
         "Haalt prijzen opnieuw op en herberekent kosten voor alle OpenRouter-gebruiksrecords",
+    },
+    crashTesting: {
+      forceCrash: "Crash-app nu",
+      forceCrashDesc: "Beëindigt onmiddellijk het systeemeigen app-proces om crashdetectie te testen",
+      forceCrashConfirm:
+        "Hierdoor crasht de app onmiddellijk om de crashdetector te testen. Doorgaan?",
     },
     environmentInfo: {
       mode: "Modus",
@@ -2486,6 +2556,8 @@ export const nlMessages: DeepPartialMessageTree<LocaleMessages> = {
     status: {
       connecting: "Verbinden...",
       connected: "Verbonden",
+      waitingConfirmation: "Wachten op bevestiging",
+      waitingConfirmationDesc: "Keur de verbinding op het hostapparaat goed om door te gaan.",
       syncing: "Synchroniseren...",
       transferringData: "Gegevens overdragen",
       syncInProgress: "Synchronisatie bezig",

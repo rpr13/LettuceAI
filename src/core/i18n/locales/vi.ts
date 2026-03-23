@@ -145,6 +145,7 @@ export const viMessages: DeepPartialMessageTree<LocaleMessages> = {
     items: {
       providers: { title: "Nhà cung cấp", subtitle: "Kết nối dịch vụ AI" },
       models: { title: "Mô hình", subtitle: "Cấu hình mô hình AI" },
+      imageGeneration: { title: "Tạo hình ảnh", subtitle: "Tạo và kiểm tra hình ảnh" },
       voices: { title: "Giọng nói", subtitle: "Giọng đọc văn bản" },
       accessibility: { title: "Trợ năng", subtitle: "Âm thanh & rung" },
       prompts: { title: "Lời nhắc hệ thống", subtitle: "Định hình tính cách AI" },
@@ -235,6 +236,14 @@ export const viMessages: DeepPartialMessageTree<LocaleMessages> = {
       chooseImage: "Chọn hình ảnh",
       chooseImageDesc: "Chọn từ thiết bị",
     },
+    avatarCurrentEdit: {
+      title: "Chỉnh sửa hiện tại",
+      reposition: "Tái định vị",
+      repositionDesc: "Di chuyển hoặc cắt hình đại diện hiện tại",
+      editWithAI: "Chỉnh sửa bằng AI",
+      editWithAIDesc: "Mở AI chỉnh sửa cho avatar hiện tại",
+      noImageModels: "Không có mẫu hình ảnh nào",
+    },
     avatarGeneration: {
       modelsLoadError: "Không thể tải mô hình tạo hình ảnh",
       title: "Tạo Avatar",
@@ -244,6 +253,19 @@ export const viMessages: DeepPartialMessageTree<LocaleMessages> = {
       describe: "Mô tả avatar của bạn",
       describePlaceholder: "Cô gái anime thân thiện với mái tóc nhiều màu, mỉm cười ấm áp...",
       inProgress: "Đang tạo avatar...",
+      editingInProgress: "Đang áp dụng chỉnh sửa hình đại diện...",
+      previousVariant: "Biến thể trước đó",
+      nextVariant: "Biến thể tiếp theo",
+      variantCounter: "{{current}} / {{total}}",
+      editRequest: "Chỉnh sửa yêu cầu",
+      editRequestPlaceholder: "Làm tóc đen hơn, đeo kính, giữ nguyên khuôn mặt...",
+      applyEdit: "Áp dụng Chỉnh sửa",
+      editImageLoadError: "Không thể chuẩn bị hình đại diện đã tạo để chỉnh sửa",
+      aiAssistant: "Trợ lý AI",
+      backToResults: "Quay lại lời nhắc",
+      magicInTheWorks: "Phép thuật trong tác phẩm...",
+      refine: "Tinh chỉnh",
+      apply: "Áp dụng",
       alt: "Avatar đã tạo",
       regenerate: "Tạo lại",
       useThis: "Sử dụng",
@@ -273,6 +295,9 @@ export const viMessages: DeepPartialMessageTree<LocaleMessages> = {
       searchPlaceholder: "Tìm mô hình...",
       noResults: "Không tìm thấy mô hình",
       noResultsHint: "Thử từ khóa khác",
+    },
+    localeSelector: {
+      title: "Chọn ngôn ngữ",
     },
     promptTemplate: {
       nameContentRequired: "Cần nhập tên và nội dung",
@@ -501,6 +526,26 @@ export const viMessages: DeepPartialMessageTree<LocaleMessages> = {
     swapPlacesOn: "Đổi vị trí (Bật)",
     uploadImage: "Tải hình ảnh lên",
     helpMeReply: "Giúp tôi trả lời",
+    sceneImage: {
+      modeTitle: "Hình ảnh cảnh",
+      modeDescription:
+        "Chọn tự viết cảnh nhắc hay để AI phác thảo cảnh đó trước.",
+      writePrompt: "Viết lời nhắc",
+      writePromptDesc: "Nhập lời nhắc hình ảnh cảnh chính xác mà bạn muốn sử dụng.",
+      askAi: "Hỏi AI",
+      askAiDesc: "Để mô hình trò chuyện hiện tại soạn thảo lời nhắc cảnh từ thời điểm đã chọn.",
+      generateTitle: "Tạo hình ảnh cảnh",
+      regenerateTitle: "Tái tạo hình ảnh cảnh",
+      aiTitle: "Lời nhắc cảnh AI",
+      promptLabel: "NHẮC CẢNH CẢNH",
+      promptPlaceholder:
+        "Miêu tả khung cảnh, nhân vật, tâm trạng, ánh sáng, khung hình và các chi tiết quan trọng...",
+      suggestedPrompt: "Lời nhắc được đề xuất",
+      regeneratePrompt: "tái sinh",
+      editPrompt: "Chỉnh sửa lời nhắc",
+      generateImage: "Tạo hình ảnh",
+      updateImage: "Cập nhật hình ảnh",
+    },
     useMyTextAsBase: "Dùng văn bản của tôi làm cơ sở",
     writeNewReply: "Viết nội dung mới",
     suggestedReply: "Gợi ý trả lời",
@@ -634,6 +679,8 @@ export const viMessages: DeepPartialMessageTree<LocaleMessages> = {
       branchFromHere: "Phân nhánh từ đây",
       branchToGroupChat: "Phân nhánh sang nhóm trò chuyện",
       branchToCharacter: "Phân nhánh sang nhân vật",
+      generateSceneImage: "Tạo hình ảnh cảnh",
+      regenerateSceneImage: "Tái tạo hình ảnh cảnh",
       chatAppearance: "Giao diện trò chuyện",
       delete: "Xóa",
       unpinToDelete: "Bỏ ghim để xóa",
@@ -1780,10 +1827,26 @@ export const viMessages: DeepPartialMessageTree<LocaleMessages> = {
       size: "KÍCH THƯỚC",
       quality: "CHẤT LƯỢNG",
       style: "PHONG CÁCH",
+      searchModels: "Tìm kiếm mô hình...",
+      selectAvatarModel: "Chọn mẫu Avatar",
+      selectSceneModel: "Chọn mô hình cảnh",
+      useFirstAvailable: "Sử dụng mô hình có sẵn đầu tiên",
     },
     empty: {
       title: "Không có mô hình hình ảnh",
       description: "Thêm mô hình tạo hình ảnh từ trang Mô hình để bắt đầu tạo hình ảnh.",
+    },
+    sections: {
+      avatar: {
+        title: "Thế hệ Avatar",
+        description:
+          "Mô hình mặc định được sử dụng khi tạo hình đại diện từ bộ chọn hình đại diện hoặc luồng hình ảnh hồ sơ liên quan.",
+      },
+      scene: {
+        title: "Tạo cảnh",
+        description:
+          "Mô hình dành riêng cho hình ảnh cảnh được tạo từ bối cảnh hội thoại hoặc lời nhắc cảnh.",
+      },
     },
   },
 
@@ -1800,6 +1863,7 @@ export const viMessages: DeepPartialMessageTree<LocaleMessages> = {
       testDataGenerators: "Trình tạo dữ liệu thử",
       storageMaintenance: "Bảo trì lưu trữ",
       usageTracking: "Theo dõi sử dụng",
+      crashTesting: "Kiểm tra sự cố",
       environmentInfo: "Thông tin môi trường",
     },
     testData: {
@@ -1821,6 +1885,12 @@ export const viMessages: DeepPartialMessageTree<LocaleMessages> = {
     usageTracking: {
       recalculateAll: "Tính lại tất cả chi phí sử dụng",
       recalculateAllDesc: "Lấy lại giá và tính lại chi phí cho tất cả bản ghi sử dụng OpenRouter",
+    },
+    crashTesting: {
+      forceCrash: "Ứng dụng gặp sự cố ngay bây giờ",
+      forceCrashDesc: "Chấm dứt ngay lập tức quá trình ứng dụng gốc để kiểm tra tính năng phát hiện sự cố",
+      forceCrashConfirm:
+        "Điều này sẽ ngay lập tức làm hỏng ứng dụng để kiểm tra trình phát hiện sự cố. Tiếp tục?",
     },
     environmentInfo: {
       mode: "Chế độ",
@@ -2463,6 +2533,8 @@ export const viMessages: DeepPartialMessageTree<LocaleMessages> = {
     status: {
       connecting: "Đang kết nối...",
       connected: "Đã kết nối",
+      waitingConfirmation: "Đang chờ xác nhận",
+      waitingConfirmationDesc: "Phê duyệt kết nối trên thiết bị chủ để tiếp tục.",
       syncing: "Đang đồng bộ...",
       transferringData: "Đang chuyển dữ liệu",
       syncInProgress: "Đồng bộ đang tiến hành",

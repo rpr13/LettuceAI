@@ -145,6 +145,7 @@ export const noMessages: DeepPartialMessageTree<LocaleMessages> = {
     items: {
       providers: { title: "Leverandører", subtitle: "Koble til AI-tjenester" },
       models: { title: "Modeller", subtitle: "Konfigurer AI-modeller" },
+      imageGeneration: { title: "Bildegenerering", subtitle: "Generer og test bilder" },
       voices: { title: "Stemmer", subtitle: "Tekst-til-tale-stemmer" },
       accessibility: { title: "Tilgjengelighet", subtitle: "Lydeffekter og haptikk" },
       prompts: { title: "Systemprompter", subtitle: "Form AI-personlighet" },
@@ -238,6 +239,14 @@ export const noMessages: DeepPartialMessageTree<LocaleMessages> = {
       chooseImage: "Velg bilde",
       chooseImageDesc: "Velg fra enheten din",
     },
+    avatarCurrentEdit: {
+      title: "Rediger gjeldende",
+      reposition: "Omplassering",
+      repositionDesc: "Flytt eller beskjær gjeldende avatar",
+      editWithAI: "Rediger med AI",
+      editWithAIDesc: "Åpne AI-redigering for gjeldende avatar",
+      noImageModels: "Ingen bildemodeller tilgjengelig",
+    },
     avatarGeneration: {
       modelsLoadError: "Kunne ikke laste bildegenereringsmodeller",
       title: "Generer avatar",
@@ -247,6 +256,19 @@ export const noMessages: DeepPartialMessageTree<LocaleMessages> = {
       describe: "Beskriv avataren din",
       describePlaceholder: "En vennlig animejente med fargerikt hår, som smiler varmt...",
       inProgress: "Genererer avatar...",
+      editingInProgress: "Bruker avatarredigering ...",
+      previousVariant: "Forrige variant",
+      nextVariant: "Neste variant",
+      variantCounter: "{{current}} / {{total}}",
+      editRequest: "Rediger forespørsel",
+      editRequestPlaceholder: "Gjør håret mørkere, legg til briller, hold ansiktet det samme...",
+      applyEdit: "Bruk Rediger",
+      editImageLoadError: "Kunne ikke klargjøre den genererte avataren for redigering",
+      aiAssistant: "AI-assistent",
+      backToResults: "Tilbake til ledeteksten",
+      magicInTheWorks: "Magi på gang...",
+      refine: "Raffinere",
+      apply: "Søke",
       alt: "Generert avatar",
       regenerate: "Generer på nytt",
       useThis: "Bruk denne",
@@ -276,6 +298,9 @@ export const noMessages: DeepPartialMessageTree<LocaleMessages> = {
       searchPlaceholder: "Søk modeller...",
       noResults: "Ingen modeller funnet",
       noResultsHint: "Prøv et annet søkeord",
+    },
+    localeSelector: {
+      title: "Velg Språk",
     },
     promptTemplate: {
       nameContentRequired: "Navn og innhold er påkrevd",
@@ -505,6 +530,26 @@ export const noMessages: DeepPartialMessageTree<LocaleMessages> = {
     swapPlacesOn: "Bytt plass (på)",
     uploadImage: "Last opp bilde",
     helpMeReply: "Hjelp meg å svare",
+    sceneImage: {
+      modeTitle: "Scenebilde",
+      modeDescription:
+        "Velg om du vil skrive scenemeldingen selv eller la AI-en tegne den først.",
+      writePrompt: "Skriv spørsmål",
+      writePromptDesc: "Skriv inn den nøyaktige scenebildemeldingen du vil bruke.",
+      askAi: "Spør AI",
+      askAiDesc: "La den gjeldende chattemodellen tegne en scenemelding fra det valgte øyeblikket.",
+      generateTitle: "Generer scenebilde",
+      regenerateTitle: "Regenerer scenebilde",
+      aiTitle: "AI Scene Spørsmål",
+      promptLabel: "SCENE SPØRSMÅL",
+      promptPlaceholder:
+        "Beskriv scenen, karakterene, stemningen, lyssettingen, kamerainnramming og viktige detaljer...",
+      suggestedPrompt: "Foreslått forespørsel",
+      regeneratePrompt: "Regenerer",
+      editPrompt: "Rediger forespørsel",
+      generateImage: "Generer bilde",
+      updateImage: "Oppdater bilde",
+    },
     useMyTextAsBase: "Bruk teksten min som grunnlag",
     writeNewReply: "Skriv noe nytt",
     suggestedReply: "Foreslått svar",
@@ -639,6 +684,8 @@ export const noMessages: DeepPartialMessageTree<LocaleMessages> = {
       branchFromHere: "Forgren herfra",
       branchToGroupChat: "Forgren til gruppechat",
       branchToCharacter: "Forgren til karakter",
+      generateSceneImage: "Generer scenebilde",
+      regenerateSceneImage: "Regenerer scenebilde",
       chatAppearance: "Chatutseende",
       delete: "Slett",
       unpinToDelete: "Løsne for å slette",
@@ -1790,11 +1837,27 @@ export const noMessages: DeepPartialMessageTree<LocaleMessages> = {
       size: "STØRRELSE",
       quality: "KVALITET",
       style: "STIL",
+      searchModels: "Søk etter modeller...",
+      selectAvatarModel: "Velg Avatar-modell",
+      selectSceneModel: "Velg Scenemodell",
+      useFirstAvailable: "Bruk den første tilgjengelige modellen",
     },
     empty: {
       title: "Ingen bildemodeller",
       description:
         "Legg til en bildegenereringsmodell fra Modeller-siden for å begynne å generere bilder.",
+    },
+    sections: {
+      avatar: {
+        title: "Avatar generasjon",
+        description:
+          "Standardmodell som brukes når du genererer avatarer fra avatarvelgeren eller relaterte profilbildeflyter.",
+      },
+      scene: {
+        title: "Scenegenerering",
+        description:
+          "Reservert modell for scenebilder generert fra samtalekontekst eller sceneforespørsler.",
+      },
     },
   },
 
@@ -1811,6 +1874,7 @@ export const noMessages: DeepPartialMessageTree<LocaleMessages> = {
       testDataGenerators: "Testdatageneratorer",
       storageMaintenance: "Lagringsvedlikehold",
       usageTracking: "Brukssporing",
+      crashTesting: "Krasjtesting",
       environmentInfo: "Miljøinfo",
     },
     testData: {
@@ -1833,6 +1897,12 @@ export const noMessages: DeepPartialMessageTree<LocaleMessages> = {
       recalculateAll: "Beregn alle brukskostnader på nytt",
       recalculateAllDesc:
         "Henter priser på nytt og beregner kostnader for alle OpenRouter-bruksposter",
+    },
+    crashTesting: {
+      forceCrash: "Crash-appen nå",
+      forceCrashDesc: "Avslutter umiddelbart den opprinnelige appprosessen for å teste krasjdeteksjon",
+      forceCrashConfirm:
+        "Dette vil umiddelbart krasje appen for å teste krasjdetektoren. Fortsette?",
     },
     environmentInfo: {
       mode: "Modus",
@@ -2479,6 +2549,8 @@ export const noMessages: DeepPartialMessageTree<LocaleMessages> = {
     status: {
       connecting: "Kobler til...",
       connected: "Tilkoblet",
+      waitingConfirmation: "Venter på bekreftelse",
+      waitingConfirmationDesc: "Godkjenn tilkoblingen på vertsenheten for å fortsette.",
       syncing: "Synkroniserer...",
       transferringData: "Overfører data",
       syncInProgress: "Synkronisering pågår",

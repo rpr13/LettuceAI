@@ -265,6 +265,9 @@ export const filMessages: DeepPartialMessageTree<LocaleMessages> = {
       alt: "Ginawang avatar",
       regenerate: "I-regenerate",
       useThis: "Gamitin Ito",
+      previousVariant: "Nakaraang variant",
+      nextVariant: "Susunod na variant",
+      variantCounter: "{{current}} / {{total}}",
       editRequest: "Edit request",
       editRequestPlaceholder:
         "Gawing mas maitim ang buhok, magdagdag ng salamin, panatilihing pareho ang mukha...",
@@ -301,6 +304,9 @@ export const filMessages: DeepPartialMessageTree<LocaleMessages> = {
       searchPlaceholder: "Maghanap ng mga modelo...",
       noResults: "Walang nahanap na modelo",
       noResultsHint: "Subukan ang ibang search term",
+    },
+    localeSelector: {
+      title: "Piliin ang Wika",
     },
     promptTemplate: {
       nameContentRequired: "Kailangan ang pangalan at nilalaman",
@@ -2580,6 +2586,8 @@ export const filMessages: DeepPartialMessageTree<LocaleMessages> = {
     status: {
       connecting: "Kumokonekta...",
       connected: "Konektado",
+      waitingConfirmation: "Naghihintay ng kumpirmasyon",
+      waitingConfirmationDesc: "Aprubahan ang koneksyon sa host device para magpatuloy.",
       syncing: "Sine-sync...",
       transferringData: "Inililipat ang data",
       syncInProgress: "Umuusad ang Pag-sync",

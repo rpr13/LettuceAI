@@ -145,6 +145,7 @@ export const ruMessages: DeepPartialMessageTree<LocaleMessages> = {
     items: {
       providers: { title: "Провайдеры", subtitle: "Подключение к AI-сервисам" },
       models: { title: "Модели", subtitle: "Настройка AI-моделей" },
+      imageGeneration: { title: "Генерация изображений", subtitle: "Генерируйте и тестируйте изображения" },
       voices: { title: "Голоса", subtitle: "Голоса для озвучивания" },
       accessibility: { title: "Доступность", subtitle: "Звуки и вибрация" },
       prompts: { title: "Системные промпты", subtitle: "Настройка личности AI" },
@@ -235,6 +236,14 @@ export const ruMessages: DeepPartialMessageTree<LocaleMessages> = {
       chooseImage: "Выбрать изображение",
       chooseImageDesc: "Выбрать с устройства",
     },
+    avatarCurrentEdit: {
+      title: "Редактировать текущий",
+      reposition: "Переместить",
+      repositionDesc: "Переместить или обрезать текущий аватар",
+      editWithAI: "Редактировать с помощью ИИ",
+      editWithAIDesc: "Открыть редактирование AI для текущего аватара",
+      noImageModels: "Нет доступных моделей изображений",
+    },
     avatarGeneration: {
       modelsLoadError: "Не удалось загрузить модели генерации изображений",
       title: "Генерация аватара",
@@ -244,6 +253,19 @@ export const ruMessages: DeepPartialMessageTree<LocaleMessages> = {
       describe: "Опишите ваш аватар",
       describePlaceholder: "Дружелюбная аниме-девушка с яркими волосами, тепло улыбающаяся...",
       inProgress: "Генерация аватара...",
+      editingInProgress: "Применение редактирования аватара...",
+      previousVariant: "Предыдущий вариант",
+      nextVariant: "Следующий вариант",
+      variantCounter: "{{current}} / {{total}}",
+      editRequest: "Редактировать запрос",
+      editRequestPlaceholder: "Сделайте волосы темнее, добавьте очки, оставьте лицо таким же...",
+      applyEdit: "Применить Редактировать",
+      editImageLoadError: "Не удалось подготовить сгенерированный аватар для редактирования.",
+      aiAssistant: "ИИ-помощник",
+      backToResults: "Вернуться к подсказке",
+      magicInTheWorks: "Магия в действии...",
+      refine: "Уточнить",
+      apply: "Применять",
       alt: "Сгенерированный аватар",
       regenerate: "Перегенерировать",
       useThis: "Использовать это",
@@ -273,6 +295,9 @@ export const ruMessages: DeepPartialMessageTree<LocaleMessages> = {
       searchPlaceholder: "Поиск моделей...",
       noResults: "Модели не найдены",
       noResultsHint: "Попробуйте другой поисковый запрос",
+    },
+    localeSelector: {
+      title: "Выберите язык",
     },
     promptTemplate: {
       nameContentRequired: "Необходимо указать имя и содержание",
@@ -502,6 +527,26 @@ export const ruMessages: DeepPartialMessageTree<LocaleMessages> = {
     swapPlacesOn: "Поменять местами (вкл.)",
     uploadImage: "Загрузить изображение",
     helpMeReply: "Помоги ответить",
+    sceneImage: {
+      modeTitle: "Изображение сцены",
+      modeDescription:
+        "Выберите, писать ли сцену подсказку или позволить ИИ сначала ее набросать.",
+      writePrompt: "Напишите подсказку",
+      writePromptDesc: "Введите точную подсказку изображения сцены, которую вы хотите использовать.",
+      askAi: "Спросите ИИ",
+      askAiDesc: "Пусть текущая модель чата нарисует подсказку сцены с выбранного момента.",
+      generateTitle: "Создать изображение сцены",
+      regenerateTitle: "Восстановить изображение сцены",
+      aiTitle: "Подсказка сцены AI",
+      promptLabel: "ПОДПИСКА СЦЕНЫ",
+      promptPlaceholder:
+        "Опишите сцену, персонажей, настроение, освещение, кадр камеры и важные детали...",
+      suggestedPrompt: "Предлагаемая подсказка",
+      regeneratePrompt: "Регенерировать",
+      editPrompt: "Изменить приглашение",
+      generateImage: "Создать изображение",
+      updateImage: "Обновить изображение",
+    },
     useMyTextAsBase: "Использовать мой текст как основу",
     writeNewReply: "Написать что-то новое",
     suggestedReply: "Предложенный ответ",
@@ -636,6 +681,8 @@ export const ruMessages: DeepPartialMessageTree<LocaleMessages> = {
       branchFromHere: "Ответвить отсюда",
       branchToGroupChat: "Ответвить в групповой чат",
       branchToCharacter: "Ответвить к персонажу",
+      generateSceneImage: "Создать изображение сцены",
+      regenerateSceneImage: "Восстановить изображение сцены",
       chatAppearance: "Оформление чата",
       delete: "Удалить",
       unpinToDelete: "Открепите, чтобы удалить",
@@ -1787,11 +1834,27 @@ export const ruMessages: DeepPartialMessageTree<LocaleMessages> = {
       size: "РАЗМЕР",
       quality: "КАЧЕСТВО",
       style: "СТИЛЬ",
+      searchModels: "Поиск моделей...",
+      selectAvatarModel: "Выберите модель аватара",
+      selectSceneModel: "Выберите модель сцены",
+      useFirstAvailable: "Использовать первую доступную модель",
     },
     empty: {
       title: "Нет моделей изображений",
       description:
         "Добавьте модель генерации изображений на странице Моделей, чтобы начать генерацию.",
+    },
+    sections: {
+      avatar: {
+        title: "Генерация аватара",
+        description:
+          "Модель по умолчанию, используемая при создании аватаров из средства выбора аватаров или связанных потоков изображений профиля.",
+      },
+      scene: {
+        title: "Генерация сцены",
+        description:
+          "Зарезервированная модель для изображений сцен, созданных на основе контекста разговора или подсказок сцены.",
+      },
     },
   },
 
@@ -1808,6 +1871,7 @@ export const ruMessages: DeepPartialMessageTree<LocaleMessages> = {
       testDataGenerators: "Генераторы тестовых данных",
       storageMaintenance: "Обслуживание хранилища",
       usageTracking: "Отслеживание использования",
+      crashTesting: "Краш-тестирование",
       environmentInfo: "Информация о среде",
     },
     testData: {
@@ -1830,6 +1894,12 @@ export const ruMessages: DeepPartialMessageTree<LocaleMessages> = {
       recalculateAll: "Пересчитать все расходы",
       recalculateAllDesc:
         "Повторно получает цены и пересчитывает стоимость для всех записей OpenRouter",
+    },
+    crashTesting: {
+      forceCrash: "Сбой приложения сейчас",
+      forceCrashDesc: "Немедленно завершает собственный процесс приложения для проверки обнаружения сбоев.",
+      forceCrashConfirm:
+        "Это немедленно приведет к сбою приложения для проверки детектора сбоев. Продолжать?",
     },
     environmentInfo: {
       mode: "Режим",
@@ -2473,6 +2543,8 @@ export const ruMessages: DeepPartialMessageTree<LocaleMessages> = {
     status: {
       connecting: "Подключение...",
       connected: "Подключено",
+      waitingConfirmation: "Ожидание подтверждения",
+      waitingConfirmationDesc: "Подтвердите подключение на главном устройстве, чтобы продолжить.",
       syncing: "Синхронизация...",
       transferringData: "Передача данных",
       syncInProgress: "Синхронизация в процессе",

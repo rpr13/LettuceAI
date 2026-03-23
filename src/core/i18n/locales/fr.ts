@@ -145,6 +145,7 @@ export const frMessages: DeepPartialMessageTree<LocaleMessages> = {
     items: {
       providers: { title: "Fournisseurs", subtitle: "Se connecter aux services IA" },
       models: { title: "Modèles", subtitle: "Configurer les modèles IA" },
+      imageGeneration: { title: "Génération d'images", subtitle: "Générer et tester des images" },
       voices: { title: "Voix", subtitle: "Voix de synthèse vocale" },
       accessibility: { title: "Accessibilité", subtitle: "Sons et retour haptique" },
       prompts: { title: "Prompts système", subtitle: "Façonner la personnalité de l'IA" },
@@ -235,6 +236,14 @@ export const frMessages: DeepPartialMessageTree<LocaleMessages> = {
       chooseImage: "Choisir une image",
       chooseImageDesc: "Sélectionner depuis votre appareil",
     },
+    avatarCurrentEdit: {
+      title: "Modifier le courant",
+      reposition: "Repositionner",
+      repositionDesc: "Déplacer ou recadrer l'avatar actuel",
+      editWithAI: "Modifier avec l'IA",
+      editWithAIDesc: "Ouvrir l'édition IA pour l'avatar actuel",
+      noImageModels: "Aucun modèle d'image disponible",
+    },
     avatarGeneration: {
       modelsLoadError: "Échec du chargement des modèles de génération d'images",
       title: "Générer un avatar",
@@ -245,6 +254,19 @@ export const frMessages: DeepPartialMessageTree<LocaleMessages> = {
       describePlaceholder:
         "Une fille anime sympathique avec des cheveux colorés, souriant chaleureusement...",
       inProgress: "Génération de l'avatar...",
+      editingInProgress: "Application de la modification de l'avatar...",
+      previousVariant: "Variante précédente",
+      nextVariant: "Variante suivante",
+      variantCounter: "{{current}} / {{total}}",
+      editRequest: "Modifier la demande",
+      editRequestPlaceholder: "Rendre les cheveux plus foncés, ajouter des lunettes, garder le visage identique...",
+      applyEdit: "Appliquer Modifier",
+      editImageLoadError: "Échec de la préparation de l'avatar généré pour la modification",
+      aiAssistant: "Assistant IA",
+      backToResults: "Retour à l'invite",
+      magicInTheWorks: "De la magie en marche...",
+      refine: "Affiner",
+      apply: "Appliquer",
       alt: "Avatar généré",
       regenerate: "Régénérer",
       useThis: "Utiliser celui-ci",
@@ -274,6 +296,9 @@ export const frMessages: DeepPartialMessageTree<LocaleMessages> = {
       searchPlaceholder: "Rechercher des modèles...",
       noResults: "Aucun modèle trouvé",
       noResultsHint: "Essayez un autre terme de recherche",
+    },
+    localeSelector: {
+      title: "Sélectionnez la langue",
     },
     promptTemplate: {
       nameContentRequired: "Le nom et le contenu sont requis",
@@ -509,6 +534,26 @@ export const frMessages: DeepPartialMessageTree<LocaleMessages> = {
     swapPlacesOn: "Échanger les places (activé)",
     uploadImage: "Télécharger une image",
     helpMeReply: "Aidez-moi à répondre",
+    sceneImage: {
+      modeTitle: "Image de la scène",
+      modeDescription:
+        "Choisissez si vous souhaitez rédiger vous-même l'invite de scène ou laisser l'IA la rédiger en premier.",
+      writePrompt: "Invite d'écriture",
+      writePromptDesc: "Tapez l'invite d'image de scène exacte que vous souhaitez utiliser.",
+      askAi: "Demandez à l'IA",
+      askAiDesc: "Laissez le modèle de discussion actuel rédiger une invite de scène à partir du moment sélectionné.",
+      generateTitle: "Générer une image de scène",
+      regenerateTitle: "Régénérer l'image de la scène",
+      aiTitle: "Invite de scène AI",
+      promptLabel: "INVITE DE SCÈNE",
+      promptPlaceholder:
+        "Décrivez la scène, les personnages, l'ambiance, l'éclairage, le cadrage de la caméra et les détails importants...",
+      suggestedPrompt: "Invite suggérée",
+      regeneratePrompt: "Régénérer",
+      editPrompt: "Modifier l'invite",
+      generateImage: "Générer une image",
+      updateImage: "Mettre à jour l'image",
+    },
     useMyTextAsBase: "Utiliser mon texte comme base",
     writeNewReply: "Écrire quelque chose de nouveau",
     suggestedReply: "Réponse suggérée",
@@ -644,6 +689,8 @@ export const frMessages: DeepPartialMessageTree<LocaleMessages> = {
       branchFromHere: "Créer une branche à partir d'ici",
       branchToGroupChat: "Créer une branche vers une discussion de groupe",
       branchToCharacter: "Créer une branche vers un personnage",
+      generateSceneImage: "Générer une image de scène",
+      regenerateSceneImage: "Régénérer l'image de la scène",
       chatAppearance: "Apparence du chat",
       delete: "Supprimer",
       unpinToDelete: "Désépingler pour supprimer",
@@ -1808,11 +1855,27 @@ export const frMessages: DeepPartialMessageTree<LocaleMessages> = {
       size: "TAILLE",
       quality: "QUALITÉ",
       style: "STYLE",
+      searchModels: "Rechercher des modèles...",
+      selectAvatarModel: "Sélectionnez le modèle d'avatar",
+      selectSceneModel: "Sélectionnez le modèle de scène",
+      useFirstAvailable: "Utiliser le premier modèle disponible",
     },
     empty: {
       title: "Aucun modèle d'image",
       description:
         "Ajoutez un modèle de génération d'images depuis la page Modèles pour commencer à générer des images.",
+    },
+    sections: {
+      avatar: {
+        title: "Génération d'avatars",
+        description:
+          "Modèle par défaut utilisé lors de la génération d'avatars à partir du sélecteur d'avatar ou des flux d'images de profil associés.",
+      },
+      scene: {
+        title: "Génération de scène",
+        description:
+          "Modèle réservé aux images de scène générées à partir du contexte de conversation ou des invites de scène.",
+      },
     },
   },
 
@@ -1829,6 +1892,7 @@ export const frMessages: DeepPartialMessageTree<LocaleMessages> = {
       testDataGenerators: "Générateurs de données de test",
       storageMaintenance: "Maintenance du stockage",
       usageTracking: "Suivi d'utilisation",
+      crashTesting: "Tests de collision",
       environmentInfo: "Infos d'environnement",
     },
     testData: {
@@ -1851,6 +1915,12 @@ export const frMessages: DeepPartialMessageTree<LocaleMessages> = {
       recalculateAll: "Recalculer tous les coûts d'utilisation",
       recalculateAllDesc:
         "Récupère les prix et recalcule les coûts pour tous les enregistrements d'utilisation OpenRouter",
+    },
+    crashTesting: {
+      forceCrash: "Application crash maintenant",
+      forceCrashDesc: "Termine immédiatement le processus de l'application native pour tester la détection des plantages",
+      forceCrashConfirm:
+        "Cela fera immédiatement planter l'application pour tester le détecteur de crash. Continuer?",
     },
     environmentInfo: {
       mode: "Mode",
@@ -2498,6 +2568,8 @@ export const frMessages: DeepPartialMessageTree<LocaleMessages> = {
     status: {
       connecting: "Connexion...",
       connected: "Connecté",
+      waitingConfirmation: "En attente de confirmation",
+      waitingConfirmationDesc: "Approuvez la connexion sur le périphérique hôte pour continuer.",
       syncing: "Synchronisation...",
       transferringData: "Transfert des données",
       syncInProgress: "Synchronisation en cours",

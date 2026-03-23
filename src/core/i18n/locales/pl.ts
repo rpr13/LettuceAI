@@ -145,6 +145,7 @@ export const plMessages: DeepPartialMessageTree<LocaleMessages> = {
     items: {
       providers: { title: "Dostawcy", subtitle: "Połącz z usługami AI" },
       models: { title: "Modele", subtitle: "Konfiguruj modele AI" },
+      imageGeneration: { title: "Generowanie obrazu", subtitle: "Generuj i testuj obrazy" },
       voices: { title: "Głosy", subtitle: "Głosy tekst-na-mowę" },
       accessibility: { title: "Dostępność", subtitle: "Dźwięki i haptyka" },
       prompts: { title: "Prompty systemowe", subtitle: "Kształtuj osobowość AI" },
@@ -236,6 +237,14 @@ export const plMessages: DeepPartialMessageTree<LocaleMessages> = {
       chooseImage: "Wybierz obraz",
       chooseImageDesc: "Wybierz z urządzenia",
     },
+    avatarCurrentEdit: {
+      title: "Edytuj bieżący",
+      reposition: "Zmień położenie",
+      repositionDesc: "Przenieś lub przytnij bieżący awatar",
+      editWithAI: "Edytuj za pomocą sztucznej inteligencji",
+      editWithAIDesc: "Otwórz edycję AI dla bieżącego awatara",
+      noImageModels: "Brak dostępnych modeli obrazów",
+    },
     avatarGeneration: {
       modelsLoadError: "Nie udało się załadować modeli generowania obrazów",
       title: "Generuj awatar",
@@ -246,6 +255,19 @@ export const plMessages: DeepPartialMessageTree<LocaleMessages> = {
       describePlaceholder:
         "Przyjazna dziewczyna w stylu anime z kolorowymi włosami, ciepło się uśmiechająca...",
       inProgress: "Generowanie awatara...",
+      editingInProgress: "Stosowanie edycji awatara...",
+      previousVariant: "Poprzedni wariant",
+      nextVariant: "Następny wariant",
+      variantCounter: "{{current}} / {{total}}",
+      editRequest: "Edytuj żądanie",
+      editRequestPlaceholder: "Przyciemnij włosy, dodaj okulary, zachowaj twarz taką samą...",
+      applyEdit: "Zastosuj Edytuj",
+      editImageLoadError: "Nie udało się przygotować wygenerowanego awatara do edycji",
+      aiAssistant: "Asystent AI",
+      backToResults: "Powrót do monitu",
+      magicInTheWorks: "Magia w działaniu...",
+      refine: "Oczyścić",
+      apply: "Stosować",
       alt: "Wygenerowany awatar",
       regenerate: "Regeneruj",
       useThis: "Użyj tego",
@@ -275,6 +297,9 @@ export const plMessages: DeepPartialMessageTree<LocaleMessages> = {
       searchPlaceholder: "Szukaj modeli...",
       noResults: "Nie znaleziono modeli",
       noResultsHint: "Spróbuj innego wyszukiwania",
+    },
+    localeSelector: {
+      title: "Wybierz Język",
     },
     promptTemplate: {
       nameContentRequired: "Nazwa i treść są wymagane",
@@ -504,6 +529,26 @@ export const plMessages: DeepPartialMessageTree<LocaleMessages> = {
     swapPlacesOn: "Zamień miejsca (wł.)",
     uploadImage: "Prześlij obraz",
     helpMeReply: "Pomóż mi odpowiedzieć",
+    sceneImage: {
+      modeTitle: "Obraz sceny",
+      modeDescription:
+        "Zdecyduj, czy sam napiszesz podpowiedź dotyczącą sceny, czy też pozwól, aby sztuczna inteligencja przygotowała ją jako pierwsza.",
+      writePrompt: "Napisz monit",
+      writePromptDesc: "Wpisz dokładny monit dotyczący obrazu sceny, którego chcesz użyć.",
+      askAi: "Zapytaj AI",
+      askAiDesc: "Pozwól, aby bieżący model czatu przygotował podpowiedź dotyczącą sceny od wybranego momentu.",
+      generateTitle: "Wygeneruj obraz sceny",
+      regenerateTitle: "Regeneruj obraz sceny",
+      aiTitle: "Monit dotyczący sceny AI",
+      promptLabel: "PODSUMOWANIE SCENY",
+      promptPlaceholder:
+        "Opisz scenę, postacie, nastrój, oświetlenie, kadrowanie kamery i ważne szczegóły...",
+      suggestedPrompt: "Sugerowany monit",
+      regeneratePrompt: "Zregenerować",
+      editPrompt: "Edytuj monit",
+      generateImage: "Wygeneruj obraz",
+      updateImage: "Aktualizuj obraz",
+    },
     useMyTextAsBase: "Użyj mojego tekstu jako bazy",
     writeNewReply: "Napisz coś nowego",
     suggestedReply: "Sugerowana odpowiedź",
@@ -638,6 +683,8 @@ export const plMessages: DeepPartialMessageTree<LocaleMessages> = {
       branchFromHere: "Rozgałęź stąd",
       branchToGroupChat: "Rozgałęź do czatu grupowego",
       branchToCharacter: "Rozgałęź do postaci",
+      generateSceneImage: "Wygeneruj obraz sceny",
+      regenerateSceneImage: "Regeneruj obraz sceny",
       chatAppearance: "Wygląd czatu",
       delete: "Usuń",
       unpinToDelete: "Odepnij, aby usunąć",
@@ -1792,11 +1839,27 @@ export const plMessages: DeepPartialMessageTree<LocaleMessages> = {
       size: "ROZMIAR",
       quality: "JAKOŚĆ",
       style: "STYL",
+      searchModels: "Wyszukaj modele...",
+      selectAvatarModel: "Wybierz Model awatara",
+      selectSceneModel: "Wybierz Model sceny",
+      useFirstAvailable: "Użyj pierwszego dostępnego modelu",
     },
     empty: {
       title: "Brak modeli obrazów",
       description:
         "Dodaj model generowania obrazów na stronie Modele, aby zacząć generować obrazy.",
+    },
+    sections: {
+      avatar: {
+        title: "Generacja awatarów",
+        description:
+          "Domyślny model używany podczas generowania awatarów na podstawie selektora awatarów lub powiązanych przepływów obrazów profilowych.",
+      },
+      scene: {
+        title: "Generowanie scen",
+        description:
+          "Zarezerwowany model dla obrazów scen generowanych na podstawie kontekstu konwersacji lub podpowiedzi scen.",
+      },
     },
   },
 
@@ -1813,6 +1876,7 @@ export const plMessages: DeepPartialMessageTree<LocaleMessages> = {
       testDataGenerators: "Generatory danych testowych",
       storageMaintenance: "Konserwacja pamięci",
       usageTracking: "Śledzenie użycia",
+      crashTesting: "Testy zderzeniowe",
       environmentInfo: "Informacje o środowisku",
     },
     testData: {
@@ -1835,6 +1899,12 @@ export const plMessages: DeepPartialMessageTree<LocaleMessages> = {
       recalculateAll: "Przelicz wszystkie koszty użycia",
       recalculateAllDesc:
         "Ponownie pobiera ceny i przelicza koszty dla wszystkich rekordów użycia OpenRouter",
+    },
+    crashTesting: {
+      forceCrash: "Awaria aplikacji teraz",
+      forceCrashDesc: "Natychmiast kończy proces aplikacji natywnej w celu przetestowania wykrywania awarii",
+      forceCrashConfirm:
+        "Spowoduje to natychmiastową awarię aplikacji w celu przetestowania detektora awarii. Kontynuować?",
     },
     environmentInfo: {
       mode: "Tryb",
@@ -2479,6 +2549,8 @@ export const plMessages: DeepPartialMessageTree<LocaleMessages> = {
     status: {
       connecting: "Łączenie...",
       connected: "Połączono",
+      waitingConfirmation: "Czekam na potwierdzenie",
+      waitingConfirmationDesc: "Aby kontynuować, zatwierdź połączenie na urządzeniu hosta.",
       syncing: "Synchronizowanie...",
       transferringData: "Przesyłanie danych",
       syncInProgress: "Synchronizacja w toku",

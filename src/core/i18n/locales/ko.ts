@@ -145,6 +145,7 @@ export const koMessages: DeepPartialMessageTree<LocaleMessages> = {
     items: {
       providers: { title: "제공자", subtitle: "AI 서비스 연결" },
       models: { title: "모델", subtitle: "AI 모델 설정" },
+      imageGeneration: { title: "이미지 생성", subtitle: "이미지 생성 및 테스트" },
       voices: { title: "음성", subtitle: "텍스트 음성 변환" },
       accessibility: { title: "접근성", subtitle: "소리 및 햅틱" },
       prompts: { title: "시스템 프롬프트", subtitle: "AI 성격 형성" },
@@ -235,6 +236,14 @@ export const koMessages: DeepPartialMessageTree<LocaleMessages> = {
       chooseImage: "이미지 선택",
       chooseImageDesc: "기기에서 선택",
     },
+    avatarCurrentEdit: {
+      title: "현재 편집",
+      reposition: "정복",
+      repositionDesc: "현재 아바타 이동 또는 자르기",
+      editWithAI: "AI로 편집",
+      editWithAIDesc: "현재 아바타에 대한 AI 편집 열기",
+      noImageModels: "사용 가능한 이미지 모델이 없습니다.",
+    },
     avatarGeneration: {
       modelsLoadError: "이미지 생성 모델을 불러오지 못했습니다",
       title: "아바타 생성",
@@ -244,6 +253,19 @@ export const koMessages: DeepPartialMessageTree<LocaleMessages> = {
       describe: "아바타를 설명하세요",
       describePlaceholder: "다채로운 머리카락에 따뜻하게 미소짓는 친근한 애니메이션 소녀...",
       inProgress: "아바타 생성 중...",
+      editingInProgress: "아바타 수정을 적용하는 중...",
+      previousVariant: "이전 변형",
+      nextVariant: "다음 변종",
+      variantCounter: "{{current}} / {{total}}",
+      editRequest: "요청 수정",
+      editRequestPlaceholder: "머리를 더 어둡게 하고, 안경을 쓰고, 얼굴은 그대로 유지하세요...",
+      applyEdit: "적용 편집",
+      editImageLoadError: "편집을 위해 생성된 아바타를 준비하지 못했습니다.",
+      aiAssistant: "AI 어시스턴트",
+      backToResults: "프롬프트로 돌아가기",
+      magicInTheWorks: "마법 작업 중...",
+      refine: "구체화",
+      apply: "적용하다",
       alt: "생성된 아바타",
       regenerate: "재생성",
       useThis: "이것 사용",
@@ -273,6 +295,9 @@ export const koMessages: DeepPartialMessageTree<LocaleMessages> = {
       searchPlaceholder: "모델 검색...",
       noResults: "모델을 찾을 수 없습니다",
       noResultsHint: "다른 검색어를 시도하세요",
+    },
+    localeSelector: {
+      title: "언어 선택",
     },
     promptTemplate: {
       nameContentRequired: "이름과 내용은 필수입니다",
@@ -495,6 +520,26 @@ export const koMessages: DeepPartialMessageTree<LocaleMessages> = {
     swapPlacesOn: "위치 교환 (켜기)",
     uploadImage: "이미지 업로드",
     helpMeReply: "답장 도우미",
+    sceneImage: {
+      modeTitle: "장면 이미지",
+      modeDescription:
+        "장면을 직접 작성할 것인지 아니면 AI가 먼저 초안을 작성하도록 할 것인지 선택하세요.",
+      writePrompt: "프롬프트 작성",
+      writePromptDesc: "사용하려는 정확한 장면 이미지 프롬프트를 입력하세요.",
+      askAi: "AI에게 물어보세요",
+      askAiDesc: "현재 채팅 모델이 선택한 순간부터 장면 프롬프트 초안을 작성하도록 합니다.",
+      generateTitle: "장면 이미지 생성",
+      regenerateTitle: "장면 이미지 재생성",
+      aiTitle: "AI 장면 프롬프트",
+      promptLabel: "장면 프롬프트",
+      promptPlaceholder:
+        "장면, 캐릭터, 분위기, 조명, 카메라 프레임 및 중요한 세부 사항을 설명합니다.",
+      suggestedPrompt: "제안된 프롬프트",
+      regeneratePrompt: "재생성",
+      editPrompt: "프롬프트 편집",
+      generateImage: "이미지 생성",
+      updateImage: "이미지 업데이트",
+    },
     useMyTextAsBase: "내 텍스트를 기반으로 사용",
     writeNewReply: "새로운 내용 작성",
     suggestedReply: "추천 답장",
@@ -628,6 +673,8 @@ export const koMessages: DeepPartialMessageTree<LocaleMessages> = {
       branchFromHere: "여기서 분기",
       branchToGroupChat: "그룹 채팅으로 분기",
       branchToCharacter: "캐릭터로 분기",
+      generateSceneImage: "장면 이미지 생성",
+      regenerateSceneImage: "장면 이미지 재생성",
       chatAppearance: "채팅 외관",
       delete: "삭제",
       unpinToDelete: "삭제하려면 고정 해제",
@@ -1771,10 +1818,26 @@ export const koMessages: DeepPartialMessageTree<LocaleMessages> = {
       size: "크기",
       quality: "품질",
       style: "스타일",
+      searchModels: "모델 검색...",
+      selectAvatarModel: "아바타 모델 선택",
+      selectSceneModel: "장면 모델 선택",
+      useFirstAvailable: "사용 가능한 첫 번째 모델 사용",
     },
     empty: {
       title: "이미지 모델 없음",
       description: "이미지 생성을 시작하려면 모델 페이지에서 이미지 생성 모델을 추가하세요.",
+    },
+    sections: {
+      avatar: {
+        title: "아바타 생성",
+        description:
+          "아바타 선택기 또는 관련 프로필 이미지 흐름에서 아바타를 생성할 때 사용되는 기본 모델입니다.",
+      },
+      scene: {
+        title: "장면 생성",
+        description:
+          "대화 컨텍스트 또는 장면 프롬프트에서 생성된 장면 이미지용으로 예약된 모델입니다.",
+      },
     },
   },
 
@@ -1791,6 +1854,7 @@ export const koMessages: DeepPartialMessageTree<LocaleMessages> = {
       testDataGenerators: "테스트 데이터 생성기",
       storageMaintenance: "스토리지 유지보수",
       usageTracking: "사용량 추적",
+      crashTesting: "충돌 테스트",
       environmentInfo: "환경 정보",
     },
     testData: {
@@ -1812,6 +1876,12 @@ export const koMessages: DeepPartialMessageTree<LocaleMessages> = {
     usageTracking: {
       recalculateAll: "모든 사용 비용 재계산",
       recalculateAllDesc: "모든 OpenRouter 사용 기록의 가격을 다시 가져오고 비용을 재계산",
+    },
+    crashTesting: {
+      forceCrash: "지금 크래시 앱",
+      forceCrashDesc: "충돌 감지를 테스트하기 위해 기본 앱 프로세스를 즉시 종료합니다.",
+      forceCrashConfirm:
+        "그러면 충돌 감지기를 테스트하기 위해 앱이 즉시 중단됩니다. 계속하다?",
     },
     environmentInfo: {
       mode: "모드",
@@ -2450,6 +2520,8 @@ export const koMessages: DeepPartialMessageTree<LocaleMessages> = {
     status: {
       connecting: "연결 중...",
       connected: "연결됨",
+      waitingConfirmation: "확인을 기다리는 중",
+      waitingConfirmationDesc: "계속하려면 호스트 장치에서 연결을 승인하세요.",
       syncing: "동기화 중...",
       transferringData: "데이터 전송 중",
       syncInProgress: "동기화 진행 중",
