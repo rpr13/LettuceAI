@@ -430,7 +430,7 @@ export function LorebookGeneratorPage() {
                     onChange={(e) => stage.onSelect(e.target.value || null)}
                     className="w-full appearance-none rounded-xl border border-fg/10 bg-surface-el/20 px-3.5 py-3 text-sm text-fg transition focus:border-fg/25 focus:outline-none"
                   >
-                    <option value="">App Default Prompt</option>
+                    <option value="">Use built-in default</option>
                     {templates
                       .filter((t) => t.promptType === stage.promptType)
                       .filter((t) => t.id !== stage.appTemplateId)

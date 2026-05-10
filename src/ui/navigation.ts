@@ -91,7 +91,7 @@ export const Routes = {
   settings: "/settings",
   settingsSpeechRecognition: "/settings/speech-recognition",
   settingsConvert: "/settings/convert",
-  settingsAdvancedLorebookEntryGenerator: "/settings/advanced/lorebook-entry-generator",
+  settingsAdvancedLorebooks: "/settings/advanced/lorebooks",
   settingsAdvancedCompanionSoulWriter: "/settings/advanced/companion-soul-writer",
   settingsUsage: "/settings/usage",
   settingsUsageActivity: "/settings/usage/activity",
@@ -223,7 +223,7 @@ export const BACK_MAPPINGS: BackMapping[] = [
   },
   { match: (p) => p.startsWith("/settings/advanced/help-me-reply"), target: "/settings/advanced" },
   {
-    match: (p) => p.startsWith("/settings/advanced/lorebook-entry-generator"),
+    match: (p) => p.startsWith("/settings/advanced/lorebooks"),
     target: "/settings/advanced",
   },
   {

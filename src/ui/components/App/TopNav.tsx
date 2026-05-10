@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { resolveBackTarget } from "../../navigation";
 import {
   ArrowLeft,
   Filter,
@@ -133,8 +134,8 @@ export function TopNav({
       { match: (p) => p === "/settings/advanced", titleKey: "common.nav.advanced" },
       { match: (p) => p === "/settings/characters", titleKey: "common.nav.characters" },
       {
-        match: (p) => p === "/settings/advanced/lorebook-entry-generator",
-        titleKey: "common.nav.lorebookEntryGenerator",
+        match: (p) => p === "/settings/advanced/lorebooks",
+        titleKey: "common.nav.lorebooks",
       },
       {
         match: (p) => p === "/settings/advanced/companion-soul-writer",
@@ -293,7 +294,7 @@ export function TopNav({
     if (basePath === "/settings/models" && !hasAdvancedView) return true;
     if (basePath === "/settings/prompts") return true;
     if (/^\/settings\/characters\/[^/]+\/templates$/.test(basePath)) return true;
-    if (basePath === "/settings/advanced/lorebook-entry-generator") return false;
+    if (basePath === "/settings/advanced/lorebooks") return false;
     if (basePath === "/settings/advanced/companion-soul-writer") return false;
     if (basePath === "/library/lorebook/generate") return false;
     if (basePath.includes("/lorebook")) return true;
@@ -348,7 +349,7 @@ export function TopNav({
     return (
       (basePath.startsWith("/settings") &&
         (!basePath.includes("/lorebook") ||
-          basePath === "/settings/advanced/lorebook-entry-generator" ||
+          basePath === "/settings/advanced/lorebooks" ||
           basePath === "/settings/advanced/companion-soul-writer")) ||
       (basePath.startsWith("/personas/") && basePath.endsWith("/edit"))
     );
@@ -529,6 +530,21 @@ export function TopNav({
     }
     if (onBackOverride) {
       onBackOverride();
+      return;
+    }
+    if (basePath.startsWith("/settings/")) {
+      const segments = basePath.split("/").filter(Boolean);
+      if (segments.length <= 2) {
+        navigate("/");
+        return;
+      }
+      const mapped = resolveBackTarget(currentPath);
+      if (mapped && mapped.startsWith("/settings")) {
+        navigate(mapped);
+        return;
+      }
+      segments.pop();
+      navigate("/" + segments.join("/"));
       return;
     }
     navigate(-1);

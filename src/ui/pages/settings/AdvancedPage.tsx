@@ -507,46 +507,7 @@ export function AdvancedPage() {
 
           <button
             type="button"
-            onClick={() => navigate("/settings/advanced/lorebook-entry-generator")}
-            className={cn(
-              "group w-full text-left",
-              "relative overflow-hidden rounded-xl border border-fg/10 bg-fg/5 px-4 py-3.5",
-              "transition-all duration-300 hover:border-fg/20",
-              interactive.active.scale,
-              interactive.focus.ring,
-            )}
-          >
-            <div className="relative flex items-start gap-3">
-              <div
-                className={cn(
-                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border",
-                  "border-warning/30 bg-warning/10 text-warning/90",
-                )}
-              >
-                <BookOpen className="h-4 w-4" />
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex-1">
-                    <span className={cn(typography.body.size, "font-medium text-fg")}>
-                      Lorebook Entry Generator
-                    </span>
-                    <p className="mt-0.5 text-[11px] leading-relaxed text-fg/50">
-                      Turn selected chat messages into durable lorebook entries and configure the
-                      draft prompts for entry writing and keyword generation.
-                    </p>
-                  </div>
-
-                  <ChevronRight className="h-4 w-4 shrink-0 text-fg/25 transition-colors group-hover:text-fg/50" />
-                </div>
-              </div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => navigate("/settings/advanced/lorebook-generator")}
+            onClick={() => navigate("/settings/advanced/lorebooks")}
             className={cn(
               "group w-full text-left",
               "relative overflow-hidden rounded-xl border border-fg/10 bg-fg/5 px-4 py-3.5",
@@ -569,11 +530,11 @@ export function AdvancedPage() {
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex-1">
                     <span className={cn(typography.body.size, "font-medium text-fg")}>
-                      Lorebook Generator
+                      Lorebooks
                     </span>
                     <p className="mt-0.5 text-[11px] leading-relaxed text-fg/50">
-                      Plan and draft a full lorebook from a brief and source materials. Configure
-                      the model and prompts for the planner, writer, refine, and coherence stages.
+                      Configure the full lorebook generator pipeline and the entry generator that
+                      drafts single entries and keywords from chat messages.
                     </p>
                   </div>
 
@@ -676,50 +637,11 @@ export function AdvancedPage() {
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex-1">
                     <span className={cn(typography.body.size, "font-medium text-fg")}>
-                      Companion mode
+                      Companions
                     </span>
                     <p className="mt-0.5 text-[11px] leading-relaxed text-fg/50">
-                      Manage local analysis models for emotion, entity extraction, and memory
-                      routing used by companion characters.
-                    </p>
-                  </div>
-
-                  <ChevronRight className="h-4 w-4 shrink-0 text-fg/25 transition-colors group-hover:text-fg/50" />
-                </div>
-              </div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => navigate("/settings/advanced/companion-soul-writer")}
-            className={cn(
-              "group w-full text-left",
-              "relative overflow-hidden rounded-xl border border-fg/10 bg-fg/5 px-4 py-3.5",
-              "transition-all duration-300 hover:border-fg/20",
-              interactive.active.scale,
-              interactive.focus.ring,
-            )}
-          >
-            <div className="relative flex items-start gap-3">
-              <div
-                className={cn(
-                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border",
-                  "border-rose-400/30 bg-rose-500/10 text-rose-300",
-                )}
-              >
-                <Sparkles className="h-4 w-4" />
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex-1">
-                    <span className={cn(typography.body.size, "font-medium text-fg")}>
-                      Companion Soul Writer
-                    </span>
-                    <p className="mt-0.5 text-[11px] leading-relaxed text-fg/50">
-                      Pick the model, fallback model, and prompt template used to draft
-                      Companion Souls. Tool-calling first, structured fallback if unsupported.
+                      Manage local analysis models for emotion, entity, and memory routing, and
+                      configure the Companion Soul Writer that drafts persona souls.
                     </p>
                   </div>
 

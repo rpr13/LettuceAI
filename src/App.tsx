@@ -40,15 +40,13 @@ import { ChangelogPage } from "./ui/pages/settings/ChangelogPage";
 import { AdvancedPage } from "./ui/pages/settings/AdvancedPage";
 import { CreationHelperPage as AICreationHelperPage } from "./ui/pages/settings/CreationHelperPage";
 import { HelpMeReplyPage } from "./ui/pages/settings/HelpMeReplyPage";
-import { LorebookEntryGeneratorPage } from "./ui/pages/settings/LorebookEntryGeneratorPage";
-import { LorebookGeneratorPage } from "./ui/pages/settings/LorebookGeneratorPage";
+import { LorebooksPage } from "./ui/pages/settings/LorebooksPage";
 import { LorebookGeneratorFlowPage } from "./ui/pages/library/LorebookGeneratorFlowPage";
-import { CompanionSoulWriterPage } from "./ui/pages/settings/CompanionSoulWriterPage";
+import { CompanionsHubPage } from "./ui/pages/settings/CompanionsHubPage";
 import { CompanionDownloadQueuePage } from "./ui/pages/settings/CompanionDownloadQueuePage";
 import { HostApiPage } from "./ui/pages/settings/HostApiPage";
 import { VoicesPage } from "./ui/pages/settings/VoicesPage";
 import { DynamicMemoryPage } from "./ui/pages/settings/DynamicMemoryPage";
-import { CompanionsPage } from "./ui/pages/settings/CompanionsPage";
 import { EmbeddingDownloadPage } from "./ui/pages/settings/EmbeddingDownloadPage";
 import { CompanionDownloadPage } from "./ui/pages/settings/CompanionDownloadPage";
 import { EmbeddingTestPage } from "./ui/pages/settings/EmbeddingTestPage";
@@ -962,7 +960,10 @@ function AppContent() {
             onBackOverride={
               isPersonaEditRoute
                 ? () => navigate(PERSONA_LIBRARY_ROUTE, { replace: true })
-                : isSettingRoute && isLgViewport
+                : isSettingRoute &&
+                    isLgViewport &&
+                    (location.pathname === "/settings" ||
+                      location.pathname === "/settings/about")
                   ? () => {
                       const target = preSettingsPathRef.current || "/";
                       navigate(target.startsWith("/settings") ? "/" : target);
@@ -1015,7 +1016,7 @@ function AppContent() {
         >
           <div
             key={(() => {
-              if (location.pathname.startsWith("/settings")) return location.pathname;
+              if (location.pathname.startsWith("/settings")) return "/settings";
               if (location.pathname.startsWith("/library")) return location.pathname;
               const chatMatch = location.pathname.match(/^\/chat\/([^/]+)/);
               if (chatMatch) return `/chat/${chatMatch[1]}`;
@@ -1096,20 +1097,13 @@ function AppContent() {
               <Route path="/settings/about" element={<AboutPage />} />
               <Route path="/settings/advanced" element={<AdvancedPage />} />
               <Route path="/settings/advanced/memory" element={<DynamicMemoryPage />} />
-              <Route path="/settings/advanced/companions" element={<CompanionsPage />} />
+              <Route path="/settings/advanced/companions" element={<CompanionsHubPage />} />
               <Route path="/settings/advanced/creation-helper" element={<AICreationHelperPage />} />
               <Route path="/settings/advanced/help-me-reply" element={<HelpMeReplyPage />} />
-              <Route
-                path="/settings/advanced/lorebook-entry-generator"
-                element={<LorebookEntryGeneratorPage />}
-              />
-              <Route
-                path="/settings/advanced/lorebook-generator"
-                element={<LorebookGeneratorPage />}
-              />
+              <Route path="/settings/advanced/lorebooks" element={<LorebooksPage />} />
               <Route
                 path="/settings/advanced/companion-soul-writer"
-                element={<CompanionSoulWriterPage />}
+                element={<CompanionsHubPage />}
               />
               <Route path="/settings/advanced/host-api" element={<HostApiPage />} />
               <Route path="/settings/embedding-download" element={<EmbeddingDownloadPage />} />

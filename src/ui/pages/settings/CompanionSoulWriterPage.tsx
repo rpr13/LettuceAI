@@ -14,8 +14,6 @@ import { getProviderIcon } from "../../../core/utils/providerIcons";
 import { cn } from "../../design-tokens";
 import { ModelSelectionBottomMenu } from "../../components/ModelSelectionBottomMenu";
 
-type ModelSlot = "primary" | "fallback";
-
 const FALLBACK_OPTIONS: Array<{
   value: DynamicMemoryStructuredFallbackFormat;
   title: string;
@@ -53,12 +51,11 @@ export function CompanionSoulWriterPage() {
   const [models, setModels] = useState<Model[]>([]);
   const [defaultModelId, setDefaultModelId] = useState<string | null>(null);
   const [primaryModelId, setPrimaryModelId] = useState<string | null>(null);
-  const [fallbackModelId, setFallbackModelId] = useState<string | null>(null);
   const [fallbackFormat, setFallbackFormat] =
     useState<DynamicMemoryStructuredFallbackFormat>("json");
   const [templates, setTemplates] = useState<SystemPromptTemplate[]>([]);
   const [selectedPromptTemplateId, setSelectedPromptTemplateId] = useState<string | null>(null);
-  const [showModelMenu, setShowModelMenu] = useState<ModelSlot | null>(null);
+  const [showModelMenu, setShowModelMenu] = useState(false);
 
   const loadData = async () => {
     try {
@@ -70,7 +67,6 @@ export function CompanionSoulWriterPage() {
       setModels(textModels);
       setDefaultModelId(settings.defaultModelId ?? null);
       setPrimaryModelId(advanced.companionSoulWriterModelId ?? null);
-      setFallbackModelId(advanced.companionSoulWriterFallbackModelId ?? null);
       setFallbackFormat(advanced.companionSoulWriterStructuredFallbackFormat ?? "json");
       setSelectedPromptTemplateId(advanced.companionSoulWriterPromptTemplateId ?? null);
       setTemplates(
@@ -104,25 +100,16 @@ export function CompanionSoulWriterPage() {
   const findModel = (id: string | null) =>
     id ? models.find((m) => m.id === id) ?? null : null;
   const primaryModel = findModel(primaryModelId);
-  const fallbackModel = findModel(fallbackModelId);
   const defaultModel = findModel(defaultModelId);
   const appDefaultLabel = defaultModel
     ? `Use App Default (${defaultModel.displayName})`
     : "Use App Default";
-  const noFallbackLabel = "No fallback model";
 
   const handlePrimaryModelChange = async (modelId: string | null) => {
     setPrimaryModelId(modelId);
     await updateAdvancedSettings((advanced) => {
       advanced.companionSoulWriterModelId = modelId ?? undefined;
     }, "Failed to save companion soul writer model:");
-  };
-
-  const handleFallbackModelChange = async (modelId: string | null) => {
-    setFallbackModelId(modelId);
-    await updateAdvancedSettings((advanced) => {
-      advanced.companionSoulWriterFallbackModelId = modelId ?? undefined;
-    }, "Failed to save companion soul writer fallback model:");
   };
 
   const handleFallbackFormatChange = async (value: DynamicMemoryStructuredFallbackFormat) => {
@@ -177,7 +164,6 @@ export function CompanionSoulWriterPage() {
                 Configure the model and prompt that draft Companion Soul profiles. Tool calling is
                 attempted first; if unsupported, the writer falls back to{" "}
                 <span className="font-mono">{fallbackFormat.toUpperCase()}</span> structured output.
-                If the primary call fails entirely, the fallback model is retried once.
               </p>
             </div>
           </div>
@@ -200,7 +186,7 @@ export function CompanionSoulWriterPage() {
                   renderModelButton(
                     "Generation model",
                     primaryModel,
-                    () => setShowModelMenu("primary"),
+                    () => setShowModelMenu(true),
                     appDefaultLabel,
                   )
                 ) : (
@@ -210,32 +196,6 @@ export function CompanionSoulWriterPage() {
                 )}
                 <p className="px-1 text-xs text-fg/50">
                   Leave unset to use the app's default text model.
-                </p>
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="rounded-lg border border-secondary/30 bg-secondary/10 p-1.5">
-                    <Cpu className="h-4 w-4 text-secondary" />
-                  </div>
-                  <h3 className="text-sm font-semibold text-fg">Fallback Model</h3>
-                </div>
-
-                {models.length > 0 ? (
-                  renderModelButton(
-                    "Fallback model",
-                    fallbackModel,
-                    () => setShowModelMenu("fallback"),
-                    noFallbackLabel,
-                  )
-                ) : (
-                  <div className="rounded-xl border border-fg/10 bg-surface-el/20 px-4 py-3">
-                    <p className="text-sm text-fg/50">No text-capable models configured.</p>
-                  </div>
-                )}
-                <p className="px-1 text-xs text-fg/50">
-                  Used only if the primary model errors before producing tool calls or text. Leave
-                  unset to disable retry.
                 </p>
               </div>
 
@@ -308,7 +268,7 @@ export function CompanionSoulWriterPage() {
                   onChange={(e) => void handlePromptSelection(e.target.value || null)}
                   className="w-full appearance-none rounded-xl border border-fg/10 bg-surface-el/20 px-3.5 py-3 text-sm text-fg transition focus:border-fg/25 focus:outline-none"
                 >
-                  <option value="">App Default Prompt</option>
+                  <option value="">Use built-in default</option>
                   {templates
                     .filter((template) => template.id !== APP_COMPANION_SOUL_WRITER_TEMPLATE_ID)
                     .map((template) => (
@@ -340,14 +300,14 @@ export function CompanionSoulWriterPage() {
       </main>
 
       <ModelSelectionBottomMenu
-        isOpen={showModelMenu === "primary"}
-        onClose={() => setShowModelMenu(null)}
+        isOpen={showModelMenu}
+        onClose={() => setShowModelMenu(false)}
         title="Generation Model"
         models={models}
         selectedModelIds={primaryModelId ? [primaryModelId] : []}
         onSelectModel={(modelId) => {
           void handlePrimaryModelChange(modelId);
-          setShowModelMenu(null);
+          setShowModelMenu(false);
         }}
         clearOption={{
           label: "Use App Default",
@@ -356,29 +316,7 @@ export function CompanionSoulWriterPage() {
           selected: !primaryModelId,
           onClick: () => {
             void handlePrimaryModelChange(null);
-            setShowModelMenu(null);
-          },
-        }}
-      />
-
-      <ModelSelectionBottomMenu
-        isOpen={showModelMenu === "fallback"}
-        onClose={() => setShowModelMenu(null)}
-        title="Fallback Model"
-        models={models}
-        selectedModelIds={fallbackModelId ? [fallbackModelId] : []}
-        onSelectModel={(modelId) => {
-          void handleFallbackModelChange(modelId);
-          setShowModelMenu(null);
-        }}
-        clearOption={{
-          label: "No fallback",
-          description: "Disable fallback retry on primary failure",
-          icon: Cpu,
-          selected: !fallbackModelId,
-          onClick: () => {
-            void handleFallbackModelChange(null);
-            setShowModelMenu(null);
+            setShowModelMenu(false);
           },
         }}
       />

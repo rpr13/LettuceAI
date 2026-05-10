@@ -281,7 +281,7 @@ export function LorebookEntryGeneratorPage() {
                   onChange={(e) => void handlePromptSelection(e.target.value || null)}
                   className="w-full appearance-none rounded-xl border border-fg/10 bg-surface-el/20 px-3.5 py-3 text-sm text-fg transition focus:border-fg/25 focus:outline-none"
                 >
-                  <option value="">App Default Prompt</option>
+                  <option value="">Use built-in default</option>
                   {templates
                     .filter((template) => template.promptType === "lorebookEntryWriter")
                     .filter((template) => template.id !== APP_LOREBOOK_ENTRY_WRITER_TEMPLATE_ID)
@@ -311,7 +311,7 @@ export function LorebookEntryGeneratorPage() {
                   onChange={(e) => void handleKeywordPromptSelection(e.target.value || null)}
                   className="w-full appearance-none rounded-xl border border-fg/10 bg-surface-el/20 px-3.5 py-3 text-sm text-fg transition focus:border-fg/25 focus:outline-none"
                 >
-                  <option value="">App Default Prompt</option>
+                  <option value="">Use built-in default</option>
                   {templates
                     .filter((template) => template.promptType === "lorebookKeywordGenerator")
                     .filter((template) => template.id !== APP_LOREBOOK_KEYWORD_GENERATOR_TEMPLATE_ID)
