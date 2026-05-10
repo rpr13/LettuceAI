@@ -3651,6 +3651,8 @@ async fn run_group_memory_tool_update(
                             embedding_dimensions: Some(embedding_dimensions),
                             match_score: None,
                             category: Some(category),
+                            observed_at: None,
+                            observed_time_precision: None,
                             canonical_entities: Vec::new(),
                             fact_signature: None,
                             fact_polarity: None,
@@ -4102,6 +4104,8 @@ async fn run_group_memory_tool_update(
                         embedding_dimensions: Some(embedding_dimensions),
                         match_score: None,
                         category: Some(category.clone()),
+                        observed_at: None,
+                        observed_time_precision: None,
                         canonical_entities: Vec::new(),
                         fact_signature: None,
                         fact_polarity: None,
@@ -5526,6 +5530,8 @@ fn build_group_system_prompt(
             .and_then(|cfg| cfg.reasoning_enabled)
             .unwrap_or(false),
         vision_enabled: group_model_supports_vision(model),
+        time_awareness_enabled: false,
+        companion_mode_enabled: false,
     };
 
     let mut rendered_entries = Vec::new();

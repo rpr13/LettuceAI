@@ -24,7 +24,10 @@ import type {
   Persona,
   Session,
 } from "../../../core/storage/schemas";
-import { createDefaultAdvancedModelSettings } from "../../../core/storage/schemas";
+import {
+  CompanionSessionStateSchema,
+  createDefaultAdvancedModelSettings,
+} from "../../../core/storage/schemas";
 import {
   readSettings,
   saveCharacter,
@@ -563,6 +566,38 @@ export function ChatSettingsContent({
     }
   }, [currentSession]);
 
+  const companionTimeAwarenessEnabled = useMemo(() => {
+    return currentSession?.companionState?.preferences?.timeAwarenessEnabled ?? false;
+  }, [currentSession?.companionState?.preferences?.timeAwarenessEnabled]);
+
+  const handleToggleCompanionTimeAwareness = useCallback(async () => {
+    if (!currentSession) {
+      return;
+    }
+
+    const nextCompanionState = CompanionSessionStateSchema.parse({
+      ...(currentSession.companionState ?? {}),
+      preferences: {
+        ...(currentSession.companionState?.preferences ?? {}),
+        timeAwarenessEnabled: !companionTimeAwarenessEnabled,
+      },
+      updatedAt: Date.now(),
+    });
+
+    const updatedSession: Session = {
+      ...currentSession,
+      companionState: nextCompanionState,
+      updatedAt: Date.now(),
+    };
+
+    try {
+      await saveSession(updatedSession);
+      setCurrentSession(updatedSession);
+    } catch (error) {
+      console.error("Failed to update companion time awareness:", error);
+    }
+  }, [companionTimeAwarenessEnabled, currentSession]);
+
   const handleViewHistory = useCallback(() => {
     if (!characterId) return;
     const base = Routes.chatHistory(characterId);
@@ -987,6 +1022,38 @@ export function ChatSettingsContent({
               />
             </div>
           </section>
+
+          {currentCharacter?.mode === "companion" && (
+            <section className={spacing.item}>
+              <SectionHeader
+                title="Companion Context"
+                subtitle="Session-level grounding for time-sensitive companion recall"
+              />
+              <div
+                className={cn(
+                  "flex items-center justify-between gap-3 rounded-xl border px-4 py-3",
+                  !currentSession
+                    ? "border-white/5 bg-[#0c0d13]/50 opacity-50 cursor-not-allowed"
+                    : "border-white/10 bg-[#0c0d13]/85",
+                )}
+              >
+                <div>
+                  <p className="text-sm font-semibold text-white">Time Awareness</p>
+                  <p className="mt-1 text-xs text-white/50">
+                    {currentSession
+                      ? "Send the local system time with each message and stamp new companion memories with when they happened."
+                      : t("chats.settings.openChatSessionFirst")}
+                  </p>
+                </div>
+                <Switch
+                  id="companion-time-awareness"
+                  checked={companionTimeAwarenessEnabled}
+                  onChange={handleToggleCompanionTimeAwareness}
+                  disabled={!currentSession}
+                />
+              </div>
+            </section>
+          )}
 
           {/* Voice */}
           {currentCharacter?.voiceConfig && (

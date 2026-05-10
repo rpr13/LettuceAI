@@ -13,6 +13,7 @@ pub mod reply_helper;
 pub mod scene;
 pub mod service;
 pub mod sse;
+pub mod temporal;
 pub mod thinking;
 pub mod tooling;
 pub mod types;

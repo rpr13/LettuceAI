@@ -8,6 +8,9 @@ use super::prompts;
 use crate::chat_manager::companion;
 use crate::chat_manager::execution::RequestSettings;
 use crate::chat_manager::memory::manual::{has_manual_memories, render_manual_memory_lines};
+use crate::chat_manager::temporal::{
+    companion_time_awareness_enabled, format_memory_for_prompt, time_placeholder_values,
+};
 use crate::chat_manager::types::{
     Character, Model, Persona, PromptEntryChatMode, PromptEntryCondition, PromptEntryImageSlot,
     PromptEntryInfoSource, PromptEntryPayload, PromptEntryPosition, PromptEntryRole, Session,
@@ -370,6 +373,20 @@ pub fn default_dynamic_summary_entries() -> Vec<SystemPromptEntry> {
         conditions: None,
         prompt_entry_payload: None,
         },
+        SystemPromptEntry {
+            id: "summary_companion_temporal".to_string(),
+            name: "Companion Time Continuity".to_string(),
+            role: PromptEntryRole::System,
+            content: "Companion continuity rules:\n- Preserve chronology explicitly when events happened in sequence.\n- Resolve relative time references against the current local time context when present.\n- Keep references linkable across turns: convert vague follow-ups like \"after that\", \"there\", \"it\", or \"the place\" into the concrete event, object, person, or location when the transcript makes it clear.\n- When the turn implies a real-world outing or shared experience, keep enough temporal and causal detail for later recall questions.\n- Current local time context: {{date_full}}, {{time_12hour_format}}, {{datetime_iso}}.".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::Relative,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: true,
+            conditions: Some(PromptEntryCondition::IsCompanionMode { value: true }),
+            prompt_entry_payload: None,
+        },
     ]
 }
 
@@ -474,6 +491,39 @@ pub fn default_dynamic_memory_entries() -> Vec<SystemPromptEntry> {
         conditions: None,
         prompt_entry_payload: None,
         },
+        SystemPromptEntry {
+            id: "memory_companion_linking".to_string(),
+            name: "Companion Episode Linking".to_string(),
+            role: PromptEntryRole::System,
+            content: "Companion memory rules:\n- For shared outings, conversations, and multi-step episodes, preserve the chain of what happened, in what order, and what concrete place/object/person each follow-up refers to.\n- Prefer memories that stay queryable later: who did what, where, and what happened next.\n- If a later line clarifies an earlier vague reference like \"there\", \"it\", \"that place\", or \"after coffee\", store the clarified fact rather than the vague wording.\n- Preserve enough context for later questions about sequence, timing, and continuity between the companion and the user.".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::Relative,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: true,
+            conditions: Some(PromptEntryCondition::IsCompanionMode { value: true }),
+            prompt_entry_payload: None,
+        },
+        SystemPromptEntry {
+            id: "memory_companion_time_awareness".to_string(),
+            name: "Companion Time Awareness".to_string(),
+            role: PromptEntryRole::System,
+            content: "Companion temporal memory rules:\n- When current local time context is available, resolve relative phrases like \"today\", \"yesterday\", \"last week\", or \"after work\" against it before deciding what memory to create.\n- Favor memories that preserve when an event happened or its order relative to nearby events.\n- Use the current local time context only for chronology and recency grounding, not for inventing unseen events.\n- Current local time context: {{date_full}}, {{time_12hour_format}}, {{datetime_iso}}.".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::Relative,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: true,
+            conditions: Some(PromptEntryCondition::All {
+                conditions: vec![
+                    PromptEntryCondition::IsCompanionMode { value: true },
+                    PromptEntryCondition::IsTimeAwarenessEnabled { value: true },
+                ],
+            }),
+            prompt_entry_payload: None,
+        },
     ]
 }
 
@@ -577,6 +627,39 @@ pub fn default_dynamic_memory_local_entries() -> Vec<SystemPromptEntry> {
             system_prompt: true,
         conditions: None,
         prompt_entry_payload: None,
+        },
+        SystemPromptEntry {
+            id: "memory_local_companion_linking".to_string(),
+            name: "Companion Episode Linking".to_string(),
+            role: PromptEntryRole::System,
+            content: "Companion memory rules:\n- For shared outings, conversations, and multi-step episodes, preserve the chain of what happened, in what order, and what concrete place/object/person each follow-up refers to.\n- Prefer multiple short memories when that preserves sequence more clearly.\n- If a later line clarifies an earlier vague reference like \"there\", \"it\", \"that place\", or \"after coffee\", store the clarified fact rather than the vague wording.\n- Preserve enough context for later questions about sequence, timing, and continuity between the companion and the user.".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::Relative,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: true,
+            conditions: Some(PromptEntryCondition::IsCompanionMode { value: true }),
+            prompt_entry_payload: None,
+        },
+        SystemPromptEntry {
+            id: "memory_local_companion_time_awareness".to_string(),
+            name: "Companion Time Awareness".to_string(),
+            role: PromptEntryRole::System,
+            content: "Companion temporal memory rules:\n- When current local time context is available, resolve relative phrases like \"today\", \"yesterday\", \"last week\", or \"after work\" against it before deciding what memory to create.\n- Favor memories that preserve when an event happened or its order relative to nearby events.\n- Use the current local time context only for chronology and recency grounding, not for inventing unseen events.\n- Current local time context: {{date_full}}, {{time_12hour_format}}, {{datetime_iso}}.".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::Relative,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: true,
+            conditions: Some(PromptEntryCondition::All {
+                conditions: vec![
+                    PromptEntryCondition::IsCompanionMode { value: true },
+                    PromptEntryCondition::IsTimeAwarenessEnabled { value: true },
+                ],
+            }),
+            prompt_entry_payload: None,
         },
     ]
 }
@@ -2488,6 +2571,20 @@ pub fn default_companion_entries() -> Vec<SystemPromptEntry> {
             prompt_entry_payload: None,
         },
         SystemPromptEntry {
+            id: "companion_time_awareness".to_string(),
+            name: "Current Time".to_string(),
+            role: PromptEntryRole::System,
+            content: "# Current Local Time\nThese values are live system-time context for this turn. Use them only to ground chronology, recency, scheduling, and temporal references.\n\n- Date: {{date_full}} ({{date}})\n- Weekday: {{weekday}}\n- Time: {{time_12hour_format}} / {{time_full}}\n- Timezone: {{time_timezone_name}} (UTC{{time_timezone}})\n- ISO Timestamp: {{datetime_iso}}".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::Relative,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: false,
+            conditions: Some(PromptEntryCondition::IsTimeAwarenessEnabled { value: true }),
+            prompt_entry_payload: None,
+        },
+        SystemPromptEntry {
             id: "companion_memory".to_string(),
             name: "Continuity".to_string(),
             role: PromptEntryRole::System,
@@ -2996,6 +3093,7 @@ pub fn build_system_prompt_entries(
         .as_ref()
         .map(|value| !value.trim().is_empty())
         .unwrap_or(false);
+    let time_awareness_enabled = companion_mode && companion_time_awareness_enabled(session);
     let has_author_note = author_note_text.is_some();
     let has_key_memories = if dynamic_memory_active {
         session
@@ -3048,6 +3146,8 @@ pub fn build_system_prompt_entries(
                 "image" | "vision"
             )
         }),
+        time_awareness_enabled,
+        companion_mode_enabled: companion_mode,
     };
 
     let mut rendered_entries: Vec<SystemPromptEntry> = Vec::new();
@@ -3094,7 +3194,7 @@ pub fn build_system_prompt_entries(
             .memory_embeddings
             .iter()
             .filter(|mem| !mem.is_cold || mem.is_pinned)
-            .map(|mem| format!("- {}", mem.text))
+            .map(format_memory_for_prompt)
             .collect::<Vec<_>>()
     } else if has_manual_memories(&session.memories) {
         render_manual_memory_lines(&session.memories)
@@ -3608,6 +3708,7 @@ fn render_with_context_internal(
 
     // Replace all template variables
     let mut result = base_template.to_string();
+    let reference_ms = crate::utils::now_millis().unwrap_or_default();
 
     if let Some(app) = app {
         utils::log_info(
@@ -3637,6 +3738,9 @@ fn render_with_context_internal(
     result = result.replace("{{user.name}}", persona_name);
     result = result.replace("{{user.desc}}", persona_desc);
     result = result.replace("{{content_rules}}", &content_rules);
+    for (placeholder, value) in time_placeholder_values(reference_ms) {
+        result = result.replace(placeholder, &value);
+    }
     let author_note_text = render_author_note_text(character, persona, session).unwrap_or_default();
     let companion_state_text =
         companion::render_prompt_state(session, character, persona).unwrap_or_default();
@@ -3963,5 +4067,19 @@ mod tests {
             &settings,
         );
         assert_eq!(rendered3, "Keep Alice focused on Bob.");
+
+        let rendered4 = render_with_context_internal(
+            None,
+            "{{date}} {{time_hour}}:{{time_minute}} {{time_12hour_format}} {{datetime_iso}}",
+            &character,
+            persona.as_ref(),
+            &session,
+            &settings,
+        );
+        assert!(!rendered4.contains("{{date}}"));
+        assert!(!rendered4.contains("{{time_hour}}"));
+        assert!(!rendered4.contains("{{time_minute}}"));
+        assert!(!rendered4.contains("{{time_12hour_format}}"));
+        assert!(!rendered4.contains("{{datetime_iso}}"));
     }
 }

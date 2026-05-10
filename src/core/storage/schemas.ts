@@ -145,6 +145,8 @@ export type PromptEntryCondition =
   | { type: "providerIdAny"; values: string[] }
   | { type: "reasoningEnabled"; value: boolean }
   | { type: "visionEnabled"; value: boolean }
+  | { type: "isTimeAwarenessEnabled"; value: boolean }
+  | { type: "isCompanionMode"; value: boolean }
   | { type: "all"; conditions: PromptEntryCondition[] }
   | { type: "any"; conditions: PromptEntryCondition[] }
   | { type: "not"; condition: PromptEntryCondition };
@@ -192,6 +194,8 @@ export const PromptEntryConditionSchema: z.ZodType<PromptEntryCondition> = z.laz
     }),
     z.object({ type: z.literal("reasoningEnabled"), value: z.boolean() }),
     z.object({ type: z.literal("visionEnabled"), value: z.boolean() }),
+    z.object({ type: z.literal("isTimeAwarenessEnabled"), value: z.boolean() }),
+    z.object({ type: z.literal("isCompanionMode"), value: z.boolean() }),
     z.object({
       type: z.literal("all"),
       conditions: z.array(PromptEntryConditionSchema).default([]),
@@ -3053,6 +3057,13 @@ export const CompanionSessionStateSchema = z.object({
   emotionalState: CompanionEmotionalStateSchema.default(DEFAULT_COMPANION_EMOTIONAL_STATE),
   relationshipState: CompanionRelationshipStateSchema.default(DEFAULT_COMPANION_RELATIONSHIP_STATE),
   activeSignals: z.array(z.string()).default([]),
+  preferences: z
+    .object({
+      timeAwarenessEnabled: z.boolean().default(false),
+    })
+    .default({
+      timeAwarenessEnabled: false,
+    }),
   updatedAt: z.number().int().default(0),
 });
 export type CompanionSessionState = z.infer<typeof CompanionSessionStateSchema>;
@@ -3173,6 +3184,8 @@ export const SessionSchema = z.object({
         accessCount: z.number().int().nonnegative().default(0),
         matchScore: z.number().nullable().optional(),
         category: z.string().nullable().optional(),
+        observedAt: z.number().int().nullable().optional(),
+        observedTimePrecision: z.string().nullable().optional(),
         canonicalEntities: z.array(MemoryEntityAnchorSchema).default([]),
         factSignature: z.string().nullable().optional(),
         factPolarity: z.number().int().nullable().optional(),

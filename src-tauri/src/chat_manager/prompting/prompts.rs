@@ -1021,12 +1021,14 @@ pub fn ensure_companion_template(app: &AppHandle) -> Result<String, String> {
 pub fn ensure_dynamic_memory_templates(app: &AppHandle) -> Result<(), String> {
     let conn = open_db(app)?;
     let now = now();
+    let summary_entries = get_base_prompt_entries(PromptType::DynamicSummaryPrompt);
+    let memory_entries = get_base_prompt_entries(PromptType::DynamicMemoryPrompt);
+    let memory_local_entries = get_base_prompt_entries(PromptType::DynamicMemoryLocalPrompt);
 
     // Summarizer template
     if get_template(app, APP_DYNAMIC_SUMMARY_TEMPLATE_ID)?.is_none() {
         let content = get_base_prompt(PromptType::DynamicSummaryPrompt);
-        let entries = get_base_prompt_entries(PromptType::DynamicSummaryPrompt);
-        let entries_json = serde_json::to_string(&entries)
+        let entries_json = serde_json::to_string(&summary_entries)
             .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
         conn.execute(
             "INSERT OR IGNORE INTO prompt_templates (id, name, prompt_type, content, entries, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
@@ -1045,15 +1047,29 @@ pub fn ensure_dynamic_memory_templates(app: &AppHandle) -> Result<(), String> {
             app,
             APP_DYNAMIC_SUMMARY_TEMPLATE_ID,
             PromptType::DynamicSummaryPrompt,
-            get_base_prompt_entries(PromptType::DynamicSummaryPrompt),
+            summary_entries.clone(),
+        );
+        let _ = append_missing_entry(
+            app,
+            APP_DYNAMIC_SUMMARY_TEMPLATE_ID,
+            "summary_companion_temporal",
+            summary_entries
+                .iter()
+                .find(|entry| entry.id == "summary_companion_temporal")
+                .cloned()
+                .expect("summary_companion_temporal exists"),
+        );
+        let _ = backfill_missing_entry_conditions(
+            app,
+            APP_DYNAMIC_SUMMARY_TEMPLATE_ID,
+            &summary_entries,
         );
     }
 
     // Memory manager template
     if get_template(app, APP_DYNAMIC_MEMORY_TEMPLATE_ID)?.is_none() {
         let content = get_base_prompt(PromptType::DynamicMemoryPrompt);
-        let entries = get_base_prompt_entries(PromptType::DynamicMemoryPrompt);
-        let entries_json = serde_json::to_string(&entries)
+        let entries_json = serde_json::to_string(&memory_entries)
             .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
         conn.execute(
             "INSERT OR IGNORE INTO prompt_templates (id, name, prompt_type, content, entries, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
@@ -1072,8 +1088,30 @@ pub fn ensure_dynamic_memory_templates(app: &AppHandle) -> Result<(), String> {
             app,
             APP_DYNAMIC_MEMORY_TEMPLATE_ID,
             PromptType::DynamicMemoryPrompt,
-            get_base_prompt_entries(PromptType::DynamicMemoryPrompt),
+            memory_entries.clone(),
         );
+        let _ = append_missing_entry(
+            app,
+            APP_DYNAMIC_MEMORY_TEMPLATE_ID,
+            "memory_companion_linking",
+            memory_entries
+                .iter()
+                .find(|entry| entry.id == "memory_companion_linking")
+                .cloned()
+                .expect("memory_companion_linking exists"),
+        );
+        let _ = append_missing_entry(
+            app,
+            APP_DYNAMIC_MEMORY_TEMPLATE_ID,
+            "memory_companion_time_awareness",
+            memory_entries
+                .iter()
+                .find(|entry| entry.id == "memory_companion_time_awareness")
+                .cloned()
+                .expect("memory_companion_time_awareness exists"),
+        );
+        let _ =
+            backfill_missing_entry_conditions(app, APP_DYNAMIC_MEMORY_TEMPLATE_ID, &memory_entries);
         let _ = maybe_backfill_template_name(
             app,
             APP_DYNAMIC_MEMORY_TEMPLATE_ID,
@@ -1083,8 +1121,7 @@ pub fn ensure_dynamic_memory_templates(app: &AppHandle) -> Result<(), String> {
 
     if get_template(app, APP_DYNAMIC_MEMORY_LOCAL_TEMPLATE_ID)?.is_none() {
         let content = get_base_prompt(PromptType::DynamicMemoryLocalPrompt);
-        let entries = get_base_prompt_entries(PromptType::DynamicMemoryLocalPrompt);
-        let entries_json = serde_json::to_string(&entries)
+        let entries_json = serde_json::to_string(&memory_local_entries)
             .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
         conn.execute(
             "INSERT OR IGNORE INTO prompt_templates (id, name, prompt_type, content, entries, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
@@ -1103,7 +1140,32 @@ pub fn ensure_dynamic_memory_templates(app: &AppHandle) -> Result<(), String> {
             app,
             APP_DYNAMIC_MEMORY_LOCAL_TEMPLATE_ID,
             PromptType::DynamicMemoryLocalPrompt,
-            get_base_prompt_entries(PromptType::DynamicMemoryLocalPrompt),
+            memory_local_entries.clone(),
+        );
+        let _ = append_missing_entry(
+            app,
+            APP_DYNAMIC_MEMORY_LOCAL_TEMPLATE_ID,
+            "memory_local_companion_linking",
+            memory_local_entries
+                .iter()
+                .find(|entry| entry.id == "memory_local_companion_linking")
+                .cloned()
+                .expect("memory_local_companion_linking exists"),
+        );
+        let _ = append_missing_entry(
+            app,
+            APP_DYNAMIC_MEMORY_LOCAL_TEMPLATE_ID,
+            "memory_local_companion_time_awareness",
+            memory_local_entries
+                .iter()
+                .find(|entry| entry.id == "memory_local_companion_time_awareness")
+                .cloned()
+                .expect("memory_local_companion_time_awareness exists"),
+        );
+        let _ = backfill_missing_entry_conditions(
+            app,
+            APP_DYNAMIC_MEMORY_LOCAL_TEMPLATE_ID,
+            &memory_local_entries,
         );
         let _ = maybe_backfill_template_name(
             app,

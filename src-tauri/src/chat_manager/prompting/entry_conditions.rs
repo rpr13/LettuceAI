@@ -32,6 +32,8 @@ pub(crate) struct PromptEntryConditionContext<'a> {
     pub(crate) provider_id: Option<&'a str>,
     pub(crate) reasoning_enabled: bool,
     pub(crate) vision_enabled: bool,
+    pub(crate) time_awareness_enabled: bool,
+    pub(crate) companion_mode_enabled: bool,
 }
 
 pub(crate) fn entry_is_active(
@@ -126,6 +128,10 @@ pub(crate) fn matches_condition(
         }),
         PromptEntryCondition::ReasoningEnabled { value } => context.reasoning_enabled == *value,
         PromptEntryCondition::VisionEnabled { value } => context.vision_enabled == *value,
+        PromptEntryCondition::IsTimeAwarenessEnabled { value } => {
+            context.time_awareness_enabled == *value
+        }
+        PromptEntryCondition::IsCompanionMode { value } => context.companion_mode_enabled == *value,
         PromptEntryCondition::All { conditions } => conditions
             .iter()
             .all(|item| matches_condition(item, context)),
@@ -205,6 +211,8 @@ mod tests {
             provider_id: Some("openai"),
             reasoning_enabled: true,
             vision_enabled: true,
+            time_awareness_enabled: false,
+            companion_mode_enabled: false,
         }
     }
 
@@ -241,5 +249,25 @@ mod tests {
         };
 
         assert!(matches_condition(&condition, &sample_context()));
+    }
+
+    #[test]
+    fn matches_time_awareness_condition() {
+        let mut context = sample_context();
+        context.time_awareness_enabled = true;
+
+        let condition = PromptEntryCondition::IsTimeAwarenessEnabled { value: true };
+
+        assert!(matches_condition(&condition, &context));
+    }
+
+    #[test]
+    fn matches_companion_mode_condition() {
+        let mut context = sample_context();
+        context.companion_mode_enabled = true;
+
+        let condition = PromptEntryCondition::IsCompanionMode { value: true };
+
+        assert!(matches_condition(&condition, &context));
     }
 }

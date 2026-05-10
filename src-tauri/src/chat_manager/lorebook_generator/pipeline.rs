@@ -225,6 +225,8 @@ fn render_entries(
             .and_then(|cfg| cfg.reasoning_enabled)
             .unwrap_or(false),
         vision_enabled: false,
+        time_awareness_enabled: false,
+        companion_mode_enabled: false,
     };
 
     let mut out = Vec::new();

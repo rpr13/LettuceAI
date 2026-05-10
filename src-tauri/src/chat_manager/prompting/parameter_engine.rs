@@ -33,6 +33,54 @@ fn variable(variable: &str, label: &str, description: &str) -> PromptVariableDef
     }
 }
 
+fn time_variables() -> Vec<PromptVariableDefinition> {
+    vec![
+        variable(
+            "{{date}}",
+            "Date",
+            "Current local date in YYYY-MM-DD format.",
+        ),
+        variable(
+            "{{date_full}}",
+            "Full Date",
+            "Current local date in a long readable format.",
+        ),
+        variable("{{weekday}}", "Weekday", "Current local weekday name."),
+        variable(
+            "{{time_hour}}",
+            "Hour",
+            "Current local hour in 24-hour format.",
+        ),
+        variable("{{time_minute}}", "Minute", "Current local minute."),
+        variable("{{time_second}}", "Second", "Current local second."),
+        variable(
+            "{{time_full}}",
+            "Full Time",
+            "Current local time with UTC offset.",
+        ),
+        variable(
+            "{{time_12hour_format}}",
+            "12-Hour Time",
+            "Current local time in 12-hour format.",
+        ),
+        variable(
+            "{{time_timezone}}",
+            "Timezone Offset",
+            "Current local UTC offset.",
+        ),
+        variable(
+            "{{time_timezone_name}}",
+            "Timezone Name",
+            "Current local timezone abbreviation.",
+        ),
+        variable(
+            "{{datetime_iso}}",
+            "ISO Timestamp",
+            "Current local timestamp in RFC3339 format.",
+        ),
+    ]
+}
+
 fn direct_chat_variables() -> Vec<PromptVariableDefinition> {
     vec![
         variable(
@@ -613,6 +661,7 @@ pub fn allowed_variables_for_prompt_type(
 ) -> Vec<PromptVariableDefinition> {
     match prompt_type {
         PromptTemplateType::Undefined => dedupe_variables([
+            time_variables(),
             direct_chat_variables(),
             group_chat_conversational_variables(),
             group_chat_roleplay_variables(),
@@ -626,26 +675,66 @@ pub fn allowed_variables_for_prompt_type(
             design_reference_writer_variables(),
             companion_soul_writer_variables(),
         ]),
-        PromptTemplateType::DirectChat => direct_chat_variables(),
-        PromptTemplateType::CompanionChat => direct_chat_variables(),
-        PromptTemplateType::GroupChatRoleplay => group_chat_roleplay_variables(),
-        PromptTemplateType::GroupChatConversational => group_chat_conversational_variables(),
-        PromptTemplateType::DynamicMemorySummarizer => dynamic_memory_summarizer_variables(),
-        PromptTemplateType::DynamicMemoryManager => dynamic_memory_manager_variables(),
-        PromptTemplateType::ReplyHelperRoleplay => reply_helper_variables(),
-        PromptTemplateType::ReplyHelperConversational => reply_helper_variables(),
-        PromptTemplateType::LorebookEntryWriter => lorebook_entry_writer_variables(),
-        PromptTemplateType::LorebookKeywordGenerator => lorebook_keyword_generator_variables(),
-        PromptTemplateType::LorebookGeneratorPlanner => lorebook_generator_planner_variables(),
-        PromptTemplateType::LorebookGeneratorWriter => lorebook_generator_writer_variables(),
-        PromptTemplateType::LorebookGeneratorRefine => lorebook_generator_refine_variables(),
-        PromptTemplateType::LorebookGeneratorCoherence => lorebook_generator_coherence_variables(),
-        PromptTemplateType::AvatarGeneration => avatar_generation_variables(),
-        PromptTemplateType::AvatarEditRequest => avatar_edit_request_variables(),
-        PromptTemplateType::SceneGeneration => scene_generation_variables(),
-        PromptTemplateType::ScenePromptWriter => scene_generation_variables(),
-        PromptTemplateType::DesignReferenceWriter => design_reference_writer_variables(),
-        PromptTemplateType::CompanionSoulWriter => companion_soul_writer_variables(),
+        PromptTemplateType::DirectChat => {
+            dedupe_variables([time_variables(), direct_chat_variables()])
+        }
+        PromptTemplateType::CompanionChat => {
+            dedupe_variables([time_variables(), direct_chat_variables()])
+        }
+        PromptTemplateType::GroupChatRoleplay => {
+            dedupe_variables([time_variables(), group_chat_roleplay_variables()])
+        }
+        PromptTemplateType::GroupChatConversational => {
+            dedupe_variables([time_variables(), group_chat_conversational_variables()])
+        }
+        PromptTemplateType::DynamicMemorySummarizer => {
+            dedupe_variables([time_variables(), dynamic_memory_summarizer_variables()])
+        }
+        PromptTemplateType::DynamicMemoryManager => {
+            dedupe_variables([time_variables(), dynamic_memory_manager_variables()])
+        }
+        PromptTemplateType::ReplyHelperRoleplay => {
+            dedupe_variables([time_variables(), reply_helper_variables()])
+        }
+        PromptTemplateType::ReplyHelperConversational => {
+            dedupe_variables([time_variables(), reply_helper_variables()])
+        }
+        PromptTemplateType::LorebookEntryWriter => {
+            dedupe_variables([time_variables(), lorebook_entry_writer_variables()])
+        }
+        PromptTemplateType::LorebookKeywordGenerator => {
+            dedupe_variables([time_variables(), lorebook_keyword_generator_variables()])
+        }
+        PromptTemplateType::LorebookGeneratorPlanner => {
+            dedupe_variables([time_variables(), lorebook_generator_planner_variables()])
+        }
+        PromptTemplateType::LorebookGeneratorWriter => {
+            dedupe_variables([time_variables(), lorebook_generator_writer_variables()])
+        }
+        PromptTemplateType::LorebookGeneratorRefine => {
+            dedupe_variables([time_variables(), lorebook_generator_refine_variables()])
+        }
+        PromptTemplateType::LorebookGeneratorCoherence => {
+            dedupe_variables([time_variables(), lorebook_generator_coherence_variables()])
+        }
+        PromptTemplateType::AvatarGeneration => {
+            dedupe_variables([time_variables(), avatar_generation_variables()])
+        }
+        PromptTemplateType::AvatarEditRequest => {
+            dedupe_variables([time_variables(), avatar_edit_request_variables()])
+        }
+        PromptTemplateType::SceneGeneration => {
+            dedupe_variables([time_variables(), scene_generation_variables()])
+        }
+        PromptTemplateType::ScenePromptWriter => {
+            dedupe_variables([time_variables(), scene_generation_variables()])
+        }
+        PromptTemplateType::DesignReferenceWriter => {
+            dedupe_variables([time_variables(), design_reference_writer_variables()])
+        }
+        PromptTemplateType::CompanionSoulWriter => {
+            dedupe_variables([time_variables(), companion_soul_writer_variables()])
+        }
     }
 }
 

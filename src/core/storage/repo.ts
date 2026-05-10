@@ -432,6 +432,14 @@ function buildMemoryFromCreateAction(
       isPinned:
         typeof args.important === "boolean" ? Boolean(args.important) : sourceMemory.isPinned,
       category: typeof args.category === "string" ? args.category : (sourceMemory.category ?? null),
+      observedAt:
+        typeof action.observedAt === "number"
+          ? action.observedAt
+          : (sourceMemory.observedAt ?? null),
+      observedTimePrecision:
+        typeof action.observedTimePrecision === "string"
+          ? action.observedTimePrecision
+          : (sourceMemory.observedTimePrecision ?? null),
     };
   }
 
@@ -452,6 +460,9 @@ function buildMemoryFromCreateAction(
     accessCount: 0,
     matchScore: null,
     category: typeof args.category === "string" ? args.category : null,
+    observedAt: typeof action.observedAt === "number" ? action.observedAt : null,
+    observedTimePrecision:
+      typeof action.observedTimePrecision === "string" ? action.observedTimePrecision : null,
     canonicalEntities: [],
     factSignature: null,
     factPolarity: null,

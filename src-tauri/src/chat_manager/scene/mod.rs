@@ -1036,6 +1036,8 @@ fn render_design_reference_prompt_entries(
             .and_then(|cfg| cfg.reasoning_enabled)
             .unwrap_or(false),
         vision_enabled: model_supports_vision(model),
+        time_awareness_enabled: false,
+        companion_mode_enabled: false,
     };
 
     for entry in template_entries {
@@ -1263,6 +1265,8 @@ fn render_scene_generation_prompt_entries(
             .and_then(|cfg| cfg.reasoning_enabled)
             .unwrap_or(false),
         vision_enabled: model_supports_vision(model),
+        time_awareness_enabled: false,
+        companion_mode_enabled: false,
     };
 
     for entry in template_entries {

@@ -2595,6 +2595,8 @@ pub async fn group_session_add_memory(
         embedding_dimensions: Some(embedding_dimensions),
         match_score: None,
         category: None,
+        observed_at: None,
+        observed_time_precision: None,
         canonical_entities: Vec::new(),
         fact_signature: None,
         fact_polarity: None,

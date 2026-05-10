@@ -138,7 +138,7 @@ pub fn load_for_session(
              category, importance_score, persistence_importance, prompt_importance, volatility, \
              is_cold, is_pinned, access_count, fact_signature, fact_polarity, source_role, \
              source_message_id, superseded_by, superseded_at, supersedes_json, \
-             canonical_entities_json, created_at, last_accessed_at \
+             canonical_entities_json, observed_at, observed_time_precision, created_at, last_accessed_at \
              FROM memory_embeddings \
              WHERE session_id = ?1 AND session_kind = ?2 \
              ORDER BY created_at ASC",
@@ -169,8 +169,10 @@ pub fn load_for_session(
             let superseded_at: Option<i64> = r.get(19)?;
             let supersedes_json: Option<String> = r.get(20)?;
             let canonical_entities_json: Option<String> = r.get(21)?;
-            let created_at: i64 = r.get(22)?;
-            let last_accessed_at: i64 = r.get(23)?;
+            let observed_at: Option<i64> = r.get(22)?;
+            let observed_time_precision: Option<String> = r.get(23)?;
+            let created_at: i64 = r.get(24)?;
+            let last_accessed_at: i64 = r.get(25)?;
 
             let embedding = blob_to_embedding(&embedding_blob);
             let embedding_dimensions = if embedding.is_empty() {
@@ -197,6 +199,8 @@ pub fn load_for_session(
                 embedding_dimensions,
                 match_score: None,
                 category,
+                observed_at: observed_at.map(|value| value as u64),
+                observed_time_precision,
                 canonical_entities: parse_canonical_entities(canonical_entities_json),
                 fact_signature,
                 fact_polarity: fact_polarity.map(|v| v as i8),
@@ -261,10 +265,10 @@ pub fn replace_all(
                     persistence_importance, prompt_importance, volatility, is_cold, is_pinned, \
                     access_count, fact_signature, fact_polarity, source_role, source_message_id, \
                     superseded_by, superseded_at, supersedes_json, canonical_entities_json, \
-                    created_at, last_accessed_at, updated_at\
+                    observed_at, observed_time_precision, created_at, last_accessed_at, updated_at\
                  ) VALUES (\
                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, \
-                    ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27\
+                    ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29\
                  )",
             )
             .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -308,6 +312,8 @@ pub fn replace_all(
                 m.superseded_at.map(|v| v as i64),
                 &supersedes_json,
                 &canonical_entities_json,
+                m.observed_at.map(|v| v as i64),
+                &m.observed_time_precision,
                 m.created_at as i64,
                 m.last_accessed_at as i64,
                 now,

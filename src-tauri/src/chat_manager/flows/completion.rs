@@ -32,6 +32,7 @@ use crate::chat_manager::service::{
     record_failed_usage, record_usage_if_available, require_api_key, ChatService, PreparedChatTurn,
 };
 use crate::chat_manager::storage::recent_messages;
+use crate::chat_manager::temporal::format_memory_for_prompt;
 use crate::chat_manager::turn_builder::{
     append_image_directive_instructions, build_enriched_query, conversation_window_with_pinned,
     insert_in_chat_prompt_entries, is_dynamic_memory_active, manual_window_size,
@@ -276,6 +277,7 @@ impl CompletionFlow {
                 dynamic_retrieval_limit(settings),
                 dynamic_min_similarity(settings),
                 dynamic_retrieval_strategy(settings),
+                companion_mode_enabled,
             )
             .await
         } else {
@@ -347,7 +349,7 @@ impl CompletionFlow {
                 Some(
                     relevant_memories
                         .iter()
-                        .map(|m| format!("- {}", m.text))
+                        .map(format_memory_for_prompt)
                         .collect::<Vec<_>>()
                         .join("\n"),
                 )

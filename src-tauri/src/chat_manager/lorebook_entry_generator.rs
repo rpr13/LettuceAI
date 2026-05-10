@@ -363,6 +363,8 @@ fn render_lorebook_entry_prompt_entries(
             .and_then(|cfg| cfg.reasoning_enabled)
             .unwrap_or(false),
         vision_enabled: false,
+        time_awareness_enabled: false,
+        companion_mode_enabled: false,
     };
 
     let mut rendered_entries = Vec::new();
@@ -450,6 +452,8 @@ fn render_lorebook_keyword_prompt_entries(
             .and_then(|cfg| cfg.reasoning_enabled)
             .unwrap_or(false),
         vision_enabled: false,
+        time_awareness_enabled: false,
+        companion_mode_enabled: false,
     };
     let replacements = [
         ("{{entry_title}}", entry_title),

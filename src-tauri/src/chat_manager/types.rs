@@ -171,6 +171,12 @@ pub enum PromptEntryCondition {
     VisionEnabled {
         value: bool,
     },
+    IsTimeAwarenessEnabled {
+        value: bool,
+    },
+    IsCompanionMode {
+        value: bool,
+    },
     All {
         conditions: Vec<PromptEntryCondition>,
     },
@@ -816,6 +822,12 @@ pub struct MemoryEmbedding {
     /// Category tag for clustering (e.g. character_trait, relationship, plot_event)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
+    /// When the remembered event happened, if the session supplied time grounding.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_at: Option<u64>,
+    /// Precision of `observed_at` (for now, usually "turn").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_time_precision: Option<String>,
     /// Canonicalized named entities and anchors used by companion memory.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub canonical_entities: Vec<MemoryEntityAnchor>,

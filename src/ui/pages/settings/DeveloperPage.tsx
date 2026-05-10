@@ -14,6 +14,7 @@ import { useNavigate } from "react-router-dom";
 import { typography, radius, interactive, cn } from "../../design-tokens";
 import { useI18n } from "../../../core/i18n/context";
 import {
+  addMemory,
   saveCharacter,
   savePersona,
   createSession,
@@ -23,9 +24,17 @@ import {
   saveLorebookEntry,
   setCharacterLorebooks,
 } from "../../../core/storage/repo";
-import type { Character, StoredMessage } from "../../../core/storage/schemas";
+import type { Character, Session, StoredMessage } from "../../../core/storage/schemas";
 import { storageBridge } from "../../../core/storage/files";
 import { clearTooltipState } from "../../../core/storage/appState";
+import { createDefaultCompanionConfig } from "../characters/utils/companionDefaults";
+
+function daysAgo(days: number, hour = 19, minute = 30) {
+  const value = new Date();
+  value.setDate(value.getDate() - days);
+  value.setHours(hour, minute, 0, 0);
+  return value.getTime();
+}
 
 export function DeveloperPage() {
   const { t } = useI18n();
@@ -361,6 +370,369 @@ export function DeveloperPage() {
     } catch (err) {
       showError(
         `Failed to create seeded benchmark session: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  };
+
+  const generateTimeAwareCompanionFixture = async () => {
+    try {
+      setStatus("Creating time-aware companion fixture...");
+
+      const sceneId = crypto.randomUUID();
+      const companion = createDefaultCompanionConfig();
+      companion.soul.essence =
+        "Nora Levin is affectionate, observant, and very good at linking small lived details across time.";
+      companion.soul.voice =
+        "Warm, direct, and lightly teasing. She answers like someone continuing a shared life, not like an assistant.";
+      companion.soul.relationalStyle =
+        "She treats the conversation like an ongoing relationship with shared places, routines, meals, and emotional continuity.";
+      companion.soul.habits =
+        "She remembers where things happened, who recommended them, and how the user reacted.";
+
+      const character = await saveCharacter({
+        name: "Nora Levin",
+        mode: "companion",
+        memoryType: "dynamic",
+        description:
+          "A thoughtful companion who pays close attention to routines, places, and shared experiences.",
+        definition:
+          "Nora Levin is emotionally present, precise about everyday details, and naturally frames memories as parts of a shared timeline. She notices dates, moods, restaurants, errands, and little sensory details that make time-based recall meaningful.",
+        tags: ["developer", "companion", "time-aware-memory", "fixture"],
+        companion,
+        scenes: [
+          {
+            id: sceneId,
+            content:
+              "A lived-in companion chat that spans a couple of weeks of ordinary city life: dinners, coffee stops, errands, and one museum date.",
+            direction:
+              "Preserve chronology. The point of this fixture is to test whether Nora can recall events by timeframe instead of only by topic.",
+            createdAt: Date.now(),
+            variants: [],
+          },
+        ],
+        defaultSceneId: sceneId,
+      });
+
+      const session = await createSession(
+        character.id,
+        "Time-Aware Companion Fixture",
+        sceneId,
+      );
+
+      const timestamps = {
+        twelveDaysAgo: daysAgo(12, 20, 10),
+        nineDaysAgo: daysAgo(9, 13, 15),
+        lastFriday: daysAgo(2, 19, 40),
+        lastSaturday: daysAgo(1, 11, 45),
+        threeDaysAgo: daysAgo(3, 18, 20),
+        fourDaysAgo: daysAgo(4, 8, 50),
+      };
+
+      const seededMessages: StoredMessage[] = [
+        {
+          id: crypto.randomUUID(),
+          role: "user",
+          content:
+            "I still can't believe we finally got a table at Saffron Table. The lamb dumplings were worth the wait.",
+          createdAt: timestamps.twelveDaysAgo,
+          memoryRefs: [],
+        },
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content:
+            "You said the black lime yogurt was the best part, and you nearly stole my last dumpling when the plate was already empty.",
+          createdAt: timestamps.twelveDaysAgo + 60_000,
+          memoryRefs: [],
+        },
+        {
+          id: crypto.randomUUID(),
+          role: "user",
+          content:
+            "Lunch at Marrow & Fig was quieter. I liked the fennel salad, but you were right that the espresso was too sour.",
+          createdAt: timestamps.nineDaysAgo,
+          memoryRefs: [],
+        },
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content:
+            "It was still a good call after the bookstore stop. You bought that blue essay collection and kept reading lines to me between bites.",
+          createdAt: timestamps.nineDaysAgo + 60_000,
+          memoryRefs: [],
+        },
+        {
+          id: crypto.randomUUID(),
+          role: "user",
+          content:
+            "Last Friday at Little Poppy was probably my favorite date lately. That mushroom toast and the apricot soda were absurdly good.",
+          createdAt: timestamps.lastFriday,
+          memoryRefs: [],
+        },
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content:
+            "You also said the candle on our table smelled like cedar and orange peel, which is apparently now your benchmark for romantic lighting.",
+          createdAt: timestamps.lastFriday + 60_000,
+          memoryRefs: [],
+        },
+        {
+          id: crypto.randomUUID(),
+          role: "user",
+          content:
+            "Saturday morning's coffee at Northline was nice, but the museum afterward is what stuck with me. I keep thinking about that storm painting.",
+          createdAt: timestamps.lastSaturday,
+          memoryRefs: [],
+        },
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content:
+            "You stood in front of it for ten minutes and then made me promise we'd come back when the new wing opens.",
+          createdAt: timestamps.lastSaturday + 60_000,
+          memoryRefs: [],
+        },
+        {
+          id: crypto.randomUUID(),
+          role: "user",
+          content:
+            "Three days ago we did ramen at Kintsugi Bowl after work. Good broth, terrible playlist.",
+          createdAt: timestamps.threeDaysAgo,
+          memoryRefs: [],
+        },
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content:
+            "The playlist was criminal, but you finished the whole bowl anyway and said the chili egg deserved a second chance.",
+          createdAt: timestamps.threeDaysAgo + 60_000,
+          memoryRefs: [],
+        },
+        {
+          id: crypto.randomUUID(),
+          role: "user",
+          content:
+            "Yesterday's bakery run was just practical. Cardamom buns, coffee, and then groceries. No romance, just survival.",
+          createdAt: timestamps.fourDaysAgo,
+          memoryRefs: [],
+        },
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content:
+            "You say that now, but you still smiled like I handed you treasure when I found the last warm bun.",
+          createdAt: timestamps.fourDaysAgo + 60_000,
+          memoryRefs: [],
+        },
+      ];
+
+      const baseSession: Session = {
+        ...session,
+        title: "Time-Aware Companion Fixture",
+        companionState: {
+          emotionalState: {
+            felt: {
+              warmth: 0.68,
+              trust: 0.61,
+              calm: 0.72,
+              vulnerability: 0.29,
+              longing: 0.22,
+              hurt: 0.04,
+              tension: 0.08,
+              irritation: 0.03,
+              affectionIntensity: 0.47,
+              reassuranceNeed: 0.14,
+            },
+            expressed: {
+              warmth: 0.72,
+              trust: 0.58,
+              calm: 0.73,
+              vulnerability: 0.25,
+              longing: 0.2,
+              hurt: 0.03,
+              tension: 0.07,
+              irritation: 0.02,
+              affectionIntensity: 0.44,
+              reassuranceNeed: 0.12,
+            },
+            blocked: {
+              warmth: 0,
+              trust: 0,
+              calm: 0,
+              vulnerability: 0,
+              longing: 0,
+              hurt: 0,
+              tension: 0,
+              irritation: 0,
+              affectionIntensity: 0,
+              reassuranceNeed: 0,
+            },
+            momentum: {
+              warmth: 0.08,
+              trust: 0.05,
+              calm: 0.02,
+              vulnerability: 0.01,
+              longing: 0.02,
+              hurt: 0,
+              tension: -0.01,
+              irritation: 0,
+              affectionIntensity: 0.04,
+              reassuranceNeed: -0.01,
+            },
+            activeDrivers: ["shared_routine", "recent_dates"],
+            confidence: 0.82,
+            updatedAt: timestamps.lastSaturday + 60_000,
+          },
+          relationshipState: {
+            closeness: 0.62,
+            trust: 0.59,
+            affection: 0.55,
+            tension: 0.08,
+            stability: 0.78,
+            interactionCount: seededMessages.length,
+            lastInteractionAt: timestamps.lastSaturday + 60_000,
+          },
+          activeSignals: ["cozy", "attentive", "shared_history"],
+          preferences: {
+            timeAwarenessEnabled: true,
+          },
+          updatedAt: timestamps.lastSaturday + 60_000,
+        },
+        memorySummary:
+          "Nora and the user have a recent run of shared outings: several restaurants, one museum date, a ramen stop after work, and a practical bakery-and-groceries run yesterday. The user often remembers food details and atmosphere.",
+        memorySummaryTokenCount: 54,
+        memoryEmbeddings: [],
+        messages: [...session.messages, ...seededMessages],
+        updatedAt: Date.now(),
+      };
+
+      await saveSession(baseSession, { preserveDynamicMemory: false });
+
+      const memorySeeds = [
+        {
+          text: "Twelve days ago, Nora and the user had dinner at Saffron Table and loved the lamb dumplings.",
+          category: "plot_event",
+          observedAt: timestamps.twelveDaysAgo,
+          sourceMessageId: seededMessages[0].id,
+          sourceRole: "user",
+          importanceScore: 1,
+          persistenceImportance: 1,
+          promptImportance: 0.95,
+          volatility: 0.35,
+          accessCount: 2,
+          isPinned: false,
+        },
+        {
+          text: "Nine days ago they had lunch at Marrow & Fig after a bookstore stop.",
+          category: "plot_event",
+          observedAt: timestamps.nineDaysAgo,
+          sourceMessageId: seededMessages[2].id,
+          sourceRole: "user",
+          importanceScore: 0.92,
+          persistenceImportance: 0.92,
+          promptImportance: 0.88,
+          volatility: 0.4,
+          accessCount: 1,
+          isPinned: false,
+        },
+        {
+          text: "Last Friday they went to Little Poppy, where the user loved the mushroom toast and apricot soda.",
+          category: "plot_event",
+          observedAt: timestamps.lastFriday,
+          sourceMessageId: seededMessages[4].id,
+          sourceRole: "user",
+          importanceScore: 1,
+          persistenceImportance: 1,
+          promptImportance: 1,
+          volatility: 0.28,
+          accessCount: 3,
+          isPinned: true,
+        },
+        {
+          text: "Six days ago they had coffee at Northline and then visited the museum, where the user fixated on a storm painting.",
+          category: "plot_event",
+          observedAt: timestamps.lastSaturday,
+          sourceMessageId: seededMessages[6].id,
+          sourceRole: "user",
+          importanceScore: 0.97,
+          persistenceImportance: 0.97,
+          promptImportance: 0.94,
+          volatility: 0.32,
+          accessCount: 2,
+          isPinned: false,
+        },
+        {
+          text: "Three days ago they ate at Kintsugi Bowl after work and agreed the broth was good but the playlist was awful.",
+          category: "plot_event",
+          observedAt: timestamps.threeDaysAgo,
+          sourceMessageId: seededMessages[8].id,
+          sourceRole: "user",
+          importanceScore: 0.9,
+          persistenceImportance: 0.9,
+          promptImportance: 0.84,
+          volatility: 0.42,
+          accessCount: 1,
+          isPinned: false,
+        },
+        {
+          text: "Yesterday they made a practical bakery run for cardamom buns, coffee, and groceries.",
+          category: "other",
+          observedAt: timestamps.fourDaysAgo,
+          sourceMessageId: seededMessages[10].id,
+          sourceRole: "user",
+            importanceScore: 0.82,
+            persistenceImportance: 0.82,
+            promptImportance: 0.72,
+            volatility: 0.48,
+            accessCount: 0,
+            isPinned: false,
+        },
+      ] as const;
+
+      let seededSession: Session | null = baseSession;
+      for (const memory of memorySeeds) {
+        seededSession = await addMemory(session.id, memory.text, memory.category);
+      }
+
+      if (!seededSession) {
+        throw new Error("Failed to seed companion memories.");
+      }
+
+      const finalSession: Session = {
+        ...seededSession,
+        memorySummary: baseSession.memorySummary,
+        memorySummaryTokenCount: baseSession.memorySummaryTokenCount,
+        companionState: baseSession.companionState,
+        messages: baseSession.messages,
+        memoryEmbeddings: (seededSession.memoryEmbeddings ?? []).map((memory, index) => {
+          const seed = memorySeeds[index];
+          return {
+            ...memory,
+            observedAt: seed?.observedAt ?? memory.observedAt,
+            observedTimePrecision: "turn",
+            sourceMessageId: seed?.sourceMessageId ?? memory.sourceMessageId,
+            sourceRole: seed?.sourceRole ?? memory.sourceRole,
+            importanceScore: seed?.importanceScore ?? memory.importanceScore,
+            persistenceImportance: seed?.persistenceImportance ?? memory.persistenceImportance,
+            promptImportance: seed?.promptImportance ?? memory.promptImportance,
+            volatility: seed?.volatility ?? memory.volatility,
+            accessCount: seed?.accessCount ?? memory.accessCount,
+            lastAccessedAt:
+              seed && seed.accessCount > 0 ? timestamps.lastSaturday : memory.lastAccessedAt,
+            isPinned: seed?.isPinned ?? memory.isPinned,
+          };
+        }),
+        updatedAt: Date.now(),
+      };
+
+      await saveSession(finalSession, { preserveDynamicMemory: false });
+
+      showStatus(`✓ Time-aware companion fixture ready: ${character.name} / ${session.id}`);
+      navigate(`/chat/${character.id}?sessionId=${session.id}`);
+    } catch (err) {
+      showError(
+        `Failed to create time-aware companion fixture: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   };
@@ -1062,6 +1434,14 @@ export function DeveloperPage() {
             title="Create seeded benchmark chat"
             description="Creates a dynamic-memory character, starting scene, and a 20-message continuity test session, then opens it."
             onClick={generateSeededBenchmarkSession}
+            variant="primary"
+          />
+
+          <ActionButton
+            icon={<FlaskConical />}
+            title="Create time-aware companion fixture"
+            description="Creates a companion chat with time awareness enabled, timestamped restaurant memories, and dated messages for testing queries like 'Where did we go last week?'"
+            onClick={generateTimeAwareCompanionFixture}
             variant="primary"
           />
 

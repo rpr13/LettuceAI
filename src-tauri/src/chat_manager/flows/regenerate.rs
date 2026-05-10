@@ -217,6 +217,7 @@ impl RegenerateFlow {
                 dynamic_retrieval_limit(&context.settings),
                 dynamic_min_similarity(&context.settings),
                 dynamic_retrieval_strategy(&context.settings),
+                companion_mode_enabled,
             )
             .await
         } else {

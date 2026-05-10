@@ -321,6 +321,8 @@ const SIMPLE_CONDITION_OPTIONS: Array<{
   { value: "providerIdAny", label: "Provider any", kind: "list", placeholder: "openai, ollama" },
   { value: "reasoningEnabled", label: "Reasoning enabled", kind: "boolean" },
   { value: "visionEnabled", label: "Vision enabled", kind: "boolean" },
+  { value: "isTimeAwarenessEnabled", label: "Time awareness enabled", kind: "boolean" },
+  { value: "isCompanionMode", label: "Companion mode", kind: "boolean" },
 ];
 
 function isSimpleCondition(
@@ -561,6 +563,10 @@ function describeSimpleCondition(condition: SimplePromptEntryCondition): string 
       return `reasoning is ${condition.value ? "on" : "off"}`;
     case "visionEnabled":
       return `vision is ${condition.value ? "on" : "off"}`;
+    case "isTimeAwarenessEnabled":
+      return `time awareness is ${condition.value ? "on" : "off"}`;
+    case "isCompanionMode":
+      return `companion mode is ${condition.value ? "on" : "off"}`;
   }
 }
 
@@ -702,6 +708,8 @@ function getScalarConditionBucket(
     case "hasPersonaReferenceText":
     case "reasoningEnabled":
     case "visionEnabled":
+    case "isTimeAwarenessEnabled":
+    case "isCompanionMode":
       return {
         type: condition.type,
         value: String(condition.value),

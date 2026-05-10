@@ -1375,6 +1375,42 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
         );
     }
 
+    {
+        let mut stmt = conn
+            .prepare("PRAGMA table_info(memory_embeddings)")
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        let mut rows = stmt
+            .query([])
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        let mut has_observed_at = false;
+        let mut has_observed_time_precision = false;
+        while let Some(row) = rows
+            .next()
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
+        {
+            let col_name: String = row
+                .get(1)
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+            match col_name.as_str() {
+                "observed_at" => has_observed_at = true,
+                "observed_time_precision" => has_observed_time_precision = true,
+                _ => {}
+            }
+        }
+        if !has_observed_at {
+            let _ = conn.execute(
+                "ALTER TABLE memory_embeddings ADD COLUMN observed_at INTEGER",
+                [],
+            );
+        }
+        if !has_observed_time_precision {
+            let _ = conn.execute(
+                "ALTER TABLE memory_embeddings ADD COLUMN observed_time_precision TEXT",
+                [],
+            );
+        }
+    }
+
     let mut stmt_sessions_mem = conn
         .prepare("PRAGMA table_info(sessions)")
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
