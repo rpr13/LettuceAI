@@ -252,6 +252,26 @@ impl SyncManagerState {
     }
 }
 
+async fn set_driver_running_status(
+    app: &AppHandle,
+    state: &SyncManagerState,
+    port: u16,
+) {
+    let my_ip = crate::utils::get_local_ip().unwrap_or_else(|_| "0.0.0.0".to_string());
+    let pin = state.pin.read().await.clone().unwrap_or_default();
+    state
+        .set_status(
+            app,
+            SyncStatus::DriverRunning {
+                ip: my_ip,
+                port,
+                pin,
+                clients: 0,
+            },
+        )
+        .await;
+}
+
 // Driver Logic (Host)
 pub async fn start_driver(app: AppHandle, _port: u16) -> Result<String, String> {
     let state = app.state::<SyncManagerState>();
@@ -552,37 +572,38 @@ async fn handle_driver_connection(
         )
         .await;
 
-    match rx.await {
+    let approval_result = tokio::select! {
+        decision = rx => decision.map_err(|_| "Connection approval was cancelled".to_string()),
+        msg = framed.next() => {
+            Err(match msg {
+                Some(Ok(P2PMessage::Disconnect)) => "Passenger disconnected before approval".to_string(),
+                Some(Ok(other)) => format!("Passenger sent unexpected message before approval: {:?}", other),
+                Some(Err(e)) => format!("Connection dropped before approval: {}", e),
+                None => "Passenger disconnected before approval".to_string(),
+            })
+        }
+    };
+    state.pending_approvals.write().await.remove(&remote_ip);
+
+    match approval_result {
         Ok(true) => {
-            // Approved
             log_info(
                 &app,
                 "sync_driver",
                 format!("Connection from {} approved", remote_ip),
             );
         }
-        _ => {
-            // Rejected or dropped
-            let my_ip = crate::utils::get_local_ip().unwrap_or_else(|_| "0.0.0.0".to_string());
-
-            let pin = state.pin.read().await.clone().unwrap_or_default();
-            state
-                .set_status(
-                    &app,
-                    SyncStatus::DriverRunning {
-                        ip: my_ip,
-                        port,
-                        pin,
-                        clients: 0,
-                    },
-                )
-                .await;
-
+        Ok(false) => {
+            set_driver_running_status(&app, state.inner(), port).await;
             return Err(crate::utils::err_msg(
                 module_path!(),
                 line!(),
                 "Connection rejected by host",
             ));
+        }
+        Err(reason) => {
+            set_driver_running_status(&app, state.inner(), port).await;
+            return Err(crate::utils::err_msg(module_path!(), line!(), reason));
         }
     }
 
@@ -604,25 +625,22 @@ async fn handle_driver_connection(
         )
         .await;
 
-    if (start_rx.await).is_err() {
-        let my_ip = crate::utils::get_local_ip().unwrap_or_else(|_| "0.0.0.0".to_string());
-        let pin = state.pin.read().await.clone().unwrap_or_default();
-        state
-            .set_status(
-                &app,
-                SyncStatus::DriverRunning {
-                    ip: my_ip,
-                    port,
-                    pin,
-                    clients: 0,
-                },
-            )
-            .await;
-        return Err(crate::utils::err_msg(
-            module_path!(),
-            line!(),
-            "Sync start cancelled",
-        ));
+    let start_result = tokio::select! {
+        result = start_rx => result.map_err(|_| "Sync start was cancelled".to_string()),
+        msg = framed.next() => {
+            Err(match msg {
+                Some(Ok(P2PMessage::Disconnect)) => "Passenger disconnected before sync start".to_string(),
+                Some(Ok(other)) => format!("Passenger sent unexpected message before sync start: {:?}", other),
+                Some(Err(e)) => format!("Connection dropped before sync start: {}", e),
+                None => "Passenger disconnected before sync start".to_string(),
+            })
+        }
+    };
+    state.pending_starts.write().await.remove(&remote_ip);
+
+    if let Err(reason) = start_result {
+        set_driver_running_status(&app, state.inner(), port).await;
+        return Err(crate::utils::err_msg(module_path!(), line!(), reason));
     }
 
     // Main Loop
