@@ -24,6 +24,35 @@ const ALLOWED_MEMORY_CATEGORIES: &[&str] = &[
     "other",
 ];
 
+fn resolve_companion_state_json(
+    conn: &rusqlite::Connection,
+    character_id: &str,
+    mode: &str,
+    session_value: &JsonValue,
+) -> Result<Option<String>, String> {
+    match session_value.get("companionState") {
+        Some(v) if !v.is_null() => {
+            Ok(Some(serde_json::to_string(v).unwrap_or_else(|_| "{}".to_string())))
+        }
+        _ if !mode.eq_ignore_ascii_case("companion") => Ok(None),
+        _ => {
+            let companion_json = conn
+                .query_row(
+                    "SELECT companion FROM characters WHERE id = ?1",
+                    params![character_id],
+                    |row| row.get::<_, Option<String>>(0),
+                )
+                .optional()
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
+                .flatten();
+            Ok(companion_json.and_then(|raw| {
+                crate::chat_manager::companion::initial_session_state_from_companion_json(&raw)
+                    .and_then(|value| serde_json::to_string(&value).ok())
+            }))
+        }
+    }
+}
+
 /// Read the current memory embeddings for a single-character session,
 /// preferring the normalised `memory_embeddings` table when populated.
 /// Falls back to the legacy JSON column for sessions that haven't been saved
@@ -812,12 +841,7 @@ fn upsert_session_meta_value(app: &tauri::AppHandle, s: &JsonValue) -> Result<()
         Some(v) => serde_json::to_string(v).unwrap_or_else(|_| "[]".to_string()),
         None => "[]".to_string(),
     };
-    let companion_state_json = match s.get("companionState") {
-        Some(v) if !v.is_null() => {
-            Some(serde_json::to_string(v).unwrap_or_else(|_| "{}".to_string()))
-        }
-        _ => None,
-    };
+    let companion_state_json = resolve_companion_state_json(&conn, &character_id, &mode, s)?;
     let memory_status = s
         .get("memoryStatus")
         .and_then(|v| v.as_str())
@@ -2234,12 +2258,7 @@ pub fn session_upsert_meta(app: tauri::AppHandle, session_json: String) -> Resul
         Some(v) => serde_json::to_string(v).unwrap_or_else(|_| "[]".to_string()),
         None => "[]".to_string(),
     };
-    let companion_state_json = match s.get("companionState") {
-        Some(v) if !v.is_null() => {
-            Some(serde_json::to_string(v).unwrap_or_else(|_| "{}".to_string()))
-        }
-        _ => None,
-    };
+    let companion_state_json = resolve_companion_state_json(&conn, &character_id, &mode, &s)?;
     let memory_status = s
         .get("memoryStatus")
         .and_then(|v| v.as_str())
@@ -2710,12 +2729,7 @@ pub fn session_upsert(app: tauri::AppHandle, session_json: String) -> Result<(),
         Some(v) => serde_json::to_string(v).unwrap_or_else(|_| "[]".to_string()),
         None => "[]".to_string(),
     };
-    let companion_state_json = match s.get("companionState") {
-        Some(v) if !v.is_null() => {
-            Some(serde_json::to_string(v).unwrap_or_else(|_| "{}".to_string()))
-        }
-        _ => None,
-    };
+    let companion_state_json = resolve_companion_state_json(&conn, &character_id, &mode, &s)?;
 
     let adv = s.get("advancedModelSettings");
     let advanced_model_settings_json = serialize_session_advanced_model_settings(adv);

@@ -53,6 +53,7 @@ export function createDefaultCompanionConfig(
       promptTemplateId,
       styleNotes: "",
     },
+    timeAwareness: false,
   };
 }
 

@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   Brain,
   ChevronDown,
+  Clock,
   Compass,
   Loader2,
   Shield,
@@ -11,6 +12,7 @@ import {
 } from "lucide-react";
 import type { CompanionConfig } from "../../../../core/storage/schemas";
 import { cn, interactive, radius, spacing, typography } from "../../../design-tokens";
+import { Switch } from "../../../components/Switch";
 import { normalizeCompanionConfig } from "../utils/companionDefaults";
 import {
   SOUL_PRESETS,
@@ -585,6 +587,43 @@ export function CompanionSoulEditor({
             </div>,
             "border-secondary/30 bg-secondary/10 text-secondary",
           )}
+        </div>
+      </div>
+
+      <div className={spacing.field}>
+        <label className={sectionLabel}>Companion context</label>
+        <div
+          className={cn(
+            "flex items-start justify-between gap-3 border border-fg/10 bg-surface-el/40 p-4",
+            radius.md,
+          )}
+        >
+          <div className="flex min-w-0 items-start gap-3">
+            <div
+              className={cn(
+                "flex h-8 w-8 shrink-0 items-center justify-center border border-fg/10 bg-fg/5 text-fg/75",
+                radius.full,
+              )}
+            >
+              <Clock className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <p className={cn(typography.body.size, "font-semibold text-fg")}>Time Awareness</p>
+              <p className={cn(typography.bodySmall.size, "mt-1 text-fg/55")}>
+                Default for new chats with this companion. Sends the local system time with each
+                message and stamps companion memories with when they happened. Individual chats can
+                override this in their settings.
+              </p>
+            </div>
+          </div>
+          <Switch
+            checked={value.timeAwareness}
+            onChange={(checked) =>
+              onChange({ ...value, timeAwareness: checked })
+            }
+            disabled={disabled}
+            aria-label="Time awareness default"
+          />
         </div>
       </div>
 

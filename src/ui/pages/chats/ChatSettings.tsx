@@ -58,7 +58,7 @@ import { storageBridge } from "../../../core/storage/files";
 import { ChatTemplateSelector } from "./components/ChatTemplateSelector";
 import { AuthorNoteBottomMenu } from "./components/AuthorNoteBottomMenu";
 import { CompanionScheduledNotesEditor } from "../characters/components/CompanionScheduledNotesEditor";
-import { CalendarClock } from "lucide-react";
+import { CalendarClock, Clock } from "lucide-react";
 import { useI18n } from "../../../core/i18n/context";
 import { isRenderableImageUrl } from "../../../core/utils/image";
 
@@ -1011,19 +1011,29 @@ export function ChatSettingsContent({
               />
               <div
                 className={cn(
-                  "flex items-center justify-between gap-3 rounded-xl border px-4 py-3",
+                  "flex items-start justify-between gap-3 rounded-xl border px-4 py-3",
                   !currentSession
                     ? "border-white/5 bg-[#0c0d13]/50 opacity-50 cursor-not-allowed"
                     : "border-white/10 bg-[#0c0d13]/85",
                 )}
               >
-                <div>
-                  <p className="text-sm font-semibold text-white">Time Awareness</p>
-                  <p className="mt-1 text-xs text-white/50">
-                    {currentSession
-                      ? "Send the local system time with each message and stamp new companion memories with when they happened."
-                      : t("chats.settings.openChatSessionFirst")}
-                  </p>
+                <div className="flex min-w-0 items-start gap-3">
+                  <div
+                    className={cn(
+                      "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center border border-fg/15 bg-fg/10 text-fg/75",
+                      radius.full,
+                    )}
+                  >
+                    <Clock className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-white">Time Awareness</p>
+                    <p className="mt-1 text-xs text-white/50">
+                      {currentSession
+                        ? "Send the local system time with each message and stamp new companion memories with when they happened."
+                        : t("chats.settings.openChatSessionFirst")}
+                    </p>
+                  </div>
                 </div>
                 <Switch
                   id="companion-time-awareness"

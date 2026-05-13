@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tauri::AppHandle;
 
 use crate::chat_manager::types::{Character, Persona, Session};
@@ -245,7 +246,16 @@ pub struct CompanionSessionState {
     pub emotional_state: EmotionalState,
     pub relationship_state: RelationshipState,
     pub active_signals: Vec<String>,
+    #[serde(default)]
+    pub preferences: CompanionPreferences,
     pub updated_at: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CompanionPreferences {
+    #[serde(default)]
+    pub time_awareness_enabled: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -255,6 +265,13 @@ struct CompanionPromptingConfig {
     prompt_template_id: Option<String>,
     #[serde(default)]
     style_notes: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct CompanionContextConfig {
+    #[serde(default)]
+    time_awareness: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -337,6 +354,10 @@ struct CompanionConfig {
     relationship_defaults: RelationshipDefaults,
     #[serde(default)]
     prompting: CompanionPromptingConfig,
+    #[serde(default)]
+    context: CompanionContextConfig,
+    #[serde(default)]
+    time_awareness: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -542,13 +563,7 @@ fn push_soul_line(lines: &mut Vec<String>, label: &str, value: &str) {
     }
 }
 
-fn current_state(session: &Session, config: &CompanionConfig) -> CompanionSessionState {
-    if let Some(raw) = &session.companion_state {
-        if let Ok(parsed) = serde_json::from_value::<CompanionSessionState>(raw.clone()) {
-            return parsed;
-        }
-    }
-
+fn default_state(config: &CompanionConfig) -> CompanionSessionState {
     CompanionSessionState {
         emotional_state: EmotionalState {
             felt: config.soul.baseline_affect.clone(),
@@ -572,8 +587,27 @@ fn current_state(session: &Session, config: &CompanionConfig) -> CompanionSessio
             last_interaction_at: 0,
         },
         active_signals: Vec::new(),
+        preferences: CompanionPreferences {
+            time_awareness_enabled: config.time_awareness || config.context.time_awareness,
+        },
         updated_at: 0,
     }
+}
+
+fn current_state(session: &Session, config: &CompanionConfig) -> CompanionSessionState {
+    if let Some(raw) = &session.companion_state {
+        if let Ok(parsed) = serde_json::from_value::<CompanionSessionState>(raw.clone()) {
+            return parsed;
+        }
+    }
+
+    default_state(config)
+}
+
+pub fn initial_session_state_from_companion_json(companion_json: &str) -> Option<Value> {
+    let companion_value = serde_json::from_str::<Value>(companion_json).ok()?;
+    let config = serde_json::from_value::<CompanionConfig>(companion_value).ok()?;
+    serde_json::to_value(default_state(&config)).ok()
 }
 
 fn companion_config(character: &Character) -> CompanionConfig {

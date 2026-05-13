@@ -109,6 +109,7 @@ function createDefaultCompanionConfig(): CompanionConfig {
       promptTemplateId: null,
       styleNotes: "",
     },
+    timeAwareness: false,
   };
 }
 

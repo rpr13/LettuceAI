@@ -3061,6 +3061,7 @@ export const CompanionConfigSchema = z.object({
     promptTemplateId: null,
     styleNotes: "",
   }),
+  timeAwareness: z.boolean().default(false),
 });
 export type CompanionConfig = z.infer<typeof CompanionConfigSchema>;
 
