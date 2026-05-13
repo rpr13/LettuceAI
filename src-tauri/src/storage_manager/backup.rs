@@ -536,6 +536,40 @@ fn export_characters(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
     Ok(result)
 }
 
+fn export_companion_scheduled_notes(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
+    let conn = open_db(app)?;
+    let mut stmt = conn
+        .prepare(
+            r#"
+            SELECT id, character_id, label, content, available_at, expires_at, recurrence,
+                   recurrence_window_ms, enabled, created_at, updated_at
+            FROM companion_scheduled_notes
+            ORDER BY character_id ASC, available_at ASC, id ASC
+            "#,
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    let rows = stmt.query_map([], |r| {
+        Ok(serde_json::json!({
+            "id": r.get::<_, String>(0)?,
+            "character_id": r.get::<_, String>(1)?,
+            "label": r.get::<_, String>(2)?,
+            "content": r.get::<_, String>(3)?,
+            "available_at": r.get::<_, i64>(4)?,
+            "expires_at": r.get::<_, Option<i64>>(5)?,
+            "recurrence": r.get::<_, String>(6)?,
+            "recurrence_window_ms": r.get::<_, Option<i64>>(7)?,
+            "enabled": r.get::<_, i64>(8)? != 0,
+            "created_at": r.get::<_, i64>(9)?,
+            "updated_at": r.get::<_, i64>(10)?,
+        }))
+    })
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
 fn export_sessions(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
     let conn = open_db(app)?;
 
@@ -1355,6 +1389,15 @@ pub async fn backup_export(
         &encryption,
     )?;
 
+    log_info(&app, "backup", "Exporting companion scheduled notes...");
+    let companion_scheduled_notes = export_companion_scheduled_notes(&app)?;
+    add_json_to_zip(
+        &mut zip,
+        "companion_scheduled_notes",
+        &serde_json::json!(companion_scheduled_notes),
+        &encryption,
+    )?;
+
     log_info(&app, "backup", "Exporting sessions...");
     let sessions = export_sessions(&app)?;
     add_json_to_zip(
@@ -2057,6 +2100,64 @@ fn import_characters(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), Str
         ),
     );
 
+    Ok(())
+}
+
+fn import_companion_scheduled_notes(
+    app: &tauri::AppHandle,
+    data: &JsonValue,
+) -> Result<(), String> {
+    let conn = open_db(app)?;
+    conn.execute("DELETE FROM companion_scheduled_notes", [])
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    let mut note_count = 0usize;
+    if let Some(arr) = data.as_array() {
+        log_info(
+            app,
+            "backup",
+            format!("Importing {} companion scheduled notes...", arr.len()),
+        );
+
+        for item in arr {
+            conn.execute(
+                r#"
+                INSERT INTO companion_scheduled_notes (
+                    id, character_id, label, content, available_at, expires_at, recurrence,
+                    recurrence_window_ms, enabled, created_at, updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                "#,
+                params![
+                    item.get("id").and_then(|v| v.as_str()),
+                    item.get("character_id").and_then(|v| v.as_str()),
+                    item.get("label").and_then(|v| v.as_str()).unwrap_or(""),
+                    item.get("content").and_then(|v| v.as_str()),
+                    item.get("available_at").and_then(|v| v.as_i64()),
+                    item.get("expires_at").and_then(|v| v.as_i64()),
+                    item.get("recurrence").and_then(|v| v.as_str()).unwrap_or("none"),
+                    item.get("recurrence_window_ms").and_then(|v| v.as_i64()),
+                    item.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true) as i64,
+                    item.get("created_at").and_then(|v| v.as_i64()),
+                    item.get("updated_at").and_then(|v| v.as_i64()),
+                ],
+            )
+            .map_err(|e| {
+                crate::utils::err_msg(
+                    module_path!(),
+                    line!(),
+                    format!("Failed to insert companion scheduled note: {}", e),
+                )
+            })?;
+            note_count += 1;
+        }
+    }
+
+    log_info(
+        app,
+        "backup",
+        format!("Companion scheduled notes import complete: {} notes", note_count),
+    );
     Ok(())
 }
 
@@ -3156,6 +3257,11 @@ pub async fn backup_import(
     let personas_data = read_backup_file(&mut archive, "data/personas.json", &encryption_params)?;
     let characters_data =
         read_backup_file(&mut archive, "data/characters.json", &encryption_params)?;
+    let companion_scheduled_notes_data = read_backup_file(
+        &mut archive,
+        "data/companion_scheduled_notes.json",
+        &encryption_params,
+    )?;
     let sessions_data = read_backup_file(&mut archive, "data/sessions.json", &encryption_params)?;
     let creation_helper_sessions_data = read_backup_file(
         &mut archive,
@@ -3373,6 +3479,23 @@ pub async fn backup_import(
         log_info(&app, "backup", "Characters imported");
     } else {
         log_info(&app, "backup", "No characters data found");
+    }
+
+    if let Some(data) = companion_scheduled_notes_data {
+        log_info(&app, "backup", "Found companion_scheduled_notes data");
+        let json_str = String::from_utf8(data)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        let json_value: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
+            crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                format!("Failed to parse companion_scheduled_notes JSON: {}", e),
+            )
+        })?;
+        import_companion_scheduled_notes(&app, &json_value)?;
+        log_info(&app, "backup", "Companion scheduled notes imported");
+    } else {
+        log_info(&app, "backup", "No companion_scheduled_notes data found");
     }
 
     if let Some(data) = chat_templates_data {
@@ -4209,6 +4332,11 @@ pub async fn backup_import_from_bytes(
     let personas_data = read_backup_file_bytes(&data, "data/personas.json", &encryption_params)?;
     let characters_data =
         read_backup_file_bytes(&data, "data/characters.json", &encryption_params)?;
+    let companion_scheduled_notes_data = read_backup_file_bytes(
+        &data,
+        "data/companion_scheduled_notes.json",
+        &encryption_params,
+    )?;
     let sessions_data = read_backup_file_bytes(&data, "data/sessions.json", &encryption_params)?;
     let creation_helper_sessions_data = read_backup_file_bytes(
         &data,
@@ -4380,6 +4508,20 @@ pub async fn backup_import_from_bytes(
         })?;
         import_characters(&app, &json_value)?;
         log_info(&app, "backup", "Characters imported");
+    }
+
+    if let Some(file_data) = companion_scheduled_notes_data {
+        let json_str = String::from_utf8(file_data)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        let json_value: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
+            crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                format!("Failed to parse companion_scheduled_notes JSON: {}", e),
+            )
+        })?;
+        import_companion_scheduled_notes(&app, &json_value)?;
+        log_info(&app, "backup", "Companion scheduled notes imported");
     }
 
     if let Some(file_data) = chat_templates_data {

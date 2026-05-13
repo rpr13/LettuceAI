@@ -7,7 +7,7 @@ use crate::storage_manager::settings::{read_settings_typed, write_settings_typed
 use crate::utils::log_info;
 
 /// Current migration version
-pub const CURRENT_MIGRATION_VERSION: u32 = 64;
+pub const CURRENT_MIGRATION_VERSION: u32 = 65;
 
 pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
     log_info(app, "migrations", "Starting migration check");
@@ -677,6 +677,16 @@ pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
         );
         migrate_v63_to_v64(app)?;
         version = 64;
+    }
+
+    if version < 65 {
+        log_info(
+            app,
+            "migrations",
+            "Running migration v64 -> v65: Add companion scheduled notes",
+        );
+        migrate_v64_to_v65(app)?;
+        version = 65;
     }
 
     // Update the stored version
@@ -3638,6 +3648,34 @@ fn migrate_v63_to_v64(app: &AppHandle) -> Result<(), String> {
         )
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     }
+
+    Ok(())
+}
+
+fn migrate_v64_to_v65(app: &AppHandle) -> Result<(), String> {
+    let conn = crate::storage_manager::db::open_db(app)?;
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS companion_scheduled_notes (
+          id TEXT PRIMARY KEY,
+          character_id TEXT NOT NULL,
+          label TEXT NOT NULL DEFAULT '',
+          content TEXT NOT NULL,
+          available_at INTEGER NOT NULL,
+          expires_at INTEGER,
+          recurrence TEXT NOT NULL DEFAULT 'none',
+          recurrence_window_ms INTEGER,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY(character_id) REFERENCES characters(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_companion_scheduled_notes_character
+          ON companion_scheduled_notes(character_id);
+        "#,
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
     Ok(())
 }

@@ -691,6 +691,24 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
         CREATE INDEX IF NOT EXISTS idx_companion_turn_effects_session_created
           ON companion_turn_effects(session_id, created_at DESC);
 
+        CREATE TABLE IF NOT EXISTS companion_scheduled_notes (
+          id TEXT PRIMARY KEY,
+          character_id TEXT NOT NULL,
+          label TEXT NOT NULL DEFAULT '',
+          content TEXT NOT NULL,
+          available_at INTEGER NOT NULL,
+          expires_at INTEGER,
+          recurrence TEXT NOT NULL DEFAULT 'none',
+          recurrence_window_ms INTEGER,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY(character_id) REFERENCES characters(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_companion_scheduled_notes_character
+          ON companion_scheduled_notes(character_id);
+
         CREATE TABLE IF NOT EXISTS message_variants (
           id TEXT PRIMARY KEY,
           message_id TEXT NOT NULL,
