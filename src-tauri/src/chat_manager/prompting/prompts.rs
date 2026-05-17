@@ -2019,12 +2019,18 @@ pub fn reset_companion_soul_writer_template(
 }
 
 /// Get the Help Me Reply template from DB, falling back to default if not found
-pub fn get_help_me_reply_prompt(app: &AppHandle, style: &str) -> String {
-    let template_id = if style == "conversational" {
-        APP_HELP_ME_REPLY_CONVERSATIONAL_TEMPLATE_ID
-    } else {
-        APP_HELP_ME_REPLY_TEMPLATE_ID
-    };
+pub fn get_help_me_reply_prompt(
+    app: &AppHandle,
+    style: &str,
+    override_template_id: Option<&str>,
+) -> String {
+    let template_id = override_template_id.unwrap_or_else(|| {
+        if style == "conversational" {
+            APP_HELP_ME_REPLY_CONVERSATIONAL_TEMPLATE_ID
+        } else {
+            APP_HELP_ME_REPLY_TEMPLATE_ID
+        }
+    });
 
     let prompt_type = if style == "conversational" {
         PromptType::HelpMeReplyConversationalPrompt

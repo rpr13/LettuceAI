@@ -7271,7 +7271,22 @@ pub async fn group_chat_generate_user_reply(
         .and_then(|advanced| advanced.help_me_reply_streaming)
         .unwrap_or(true);
 
-    let base_prompt = prompts::get_help_me_reply_prompt(&app, reply_style);
+    let help_me_reply_prompt_template_id = settings
+        .advanced_settings
+        .as_ref()
+        .and_then(|advanced| {
+            if reply_style == "conversational" {
+                advanced
+                    .help_me_reply_conversational_prompt_template_id
+                    .as_deref()
+            } else {
+                advanced.help_me_reply_roleplay_prompt_template_id.as_deref()
+            }
+        })
+        .filter(|id| !id.trim().is_empty());
+
+    let base_prompt =
+        prompts::get_help_me_reply_prompt(&app, reply_style, help_me_reply_prompt_template_id);
 
     let persona_name = persona.map(|p| p.title.as_str()).unwrap_or("user");
     let persona_desc = persona.map(|p| p.description.as_str()).unwrap_or("");

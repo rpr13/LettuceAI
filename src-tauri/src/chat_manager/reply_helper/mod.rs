@@ -122,7 +122,22 @@ pub async fn chat_generate_user_reply(
         .map(|s| s.as_str())
         .unwrap_or("roleplay");
 
-    let base_prompt = prompts::get_help_me_reply_prompt(&app, reply_style);
+    let help_me_reply_prompt_template_id = settings
+        .advanced_settings
+        .as_ref()
+        .and_then(|advanced| {
+            if reply_style == "conversational" {
+                advanced
+                    .help_me_reply_conversational_prompt_template_id
+                    .as_deref()
+            } else {
+                advanced.help_me_reply_roleplay_prompt_template_id.as_deref()
+            }
+        })
+        .filter(|id| !id.trim().is_empty());
+
+    let base_prompt =
+        prompts::get_help_me_reply_prompt(&app, reply_style, help_me_reply_prompt_template_id);
 
     // Get max tokens from settings (default to 150)
     let max_tokens = settings

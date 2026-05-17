@@ -2842,6 +2842,8 @@ export const SettingsSchema = z.object({
       helpMeReplyStreaming: z.boolean().optional(),
       helpMeReplyMaxTokens: z.number().optional(),
       helpMeReplyStyle: z.enum(["conversational", "roleplay"]).optional(),
+      helpMeReplyRoleplayPromptTemplateId: z.string().optional(),
+      helpMeReplyConversationalPromptTemplateId: z.string().optional(),
       lorebookEntryGeneratorModelId: z.string().optional(),
       lorebookEntryGeneratorStructuredFallbackFormat:
         DynamicMemoryStructuredFallbackFormatSchema.optional(),

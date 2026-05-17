@@ -236,6 +236,8 @@ fn default_settings() -> Settings {
             help_me_reply_streaming: None,
             help_me_reply_max_tokens: None,
             help_me_reply_style: None,
+            help_me_reply_roleplay_prompt_template_id: None,
+            help_me_reply_conversational_prompt_template_id: None,
             lorebook_entry_generator_model_id: None,
             lorebook_entry_generator_structured_fallback_format: Some(
                 DynamicMemoryStructuredFallbackFormat::Json,

@@ -12,6 +12,8 @@ export interface AdvancedSettings {
   appUpdateChecksEnabled?: boolean;
   developerModeEnabled?: boolean;
   helpMeReplyEnabled?: boolean;
+  helpMeReplyRoleplayPromptTemplateId?: string;
+  helpMeReplyConversationalPromptTemplateId?: string;
   manualModeContextWindow?: number;
   embeddingMaxTokens?: number; // 1024, 2048, or 4096
   embeddingModelVersion?: "v3" | "v4";

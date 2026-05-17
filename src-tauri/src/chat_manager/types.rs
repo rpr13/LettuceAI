@@ -346,6 +346,10 @@ pub struct AdvancedSettings {
     #[serde(default)]
     pub help_me_reply_style: Option<String>,
     #[serde(default)]
+    pub help_me_reply_roleplay_prompt_template_id: Option<String>,
+    #[serde(default)]
+    pub help_me_reply_conversational_prompt_template_id: Option<String>,
+    #[serde(default)]
     pub lorebook_entry_generator_model_id: Option<String>,
     #[serde(default)]
     pub lorebook_entry_generator_structured_fallback_format:

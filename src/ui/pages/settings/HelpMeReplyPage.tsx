@@ -11,7 +11,12 @@ import {
   BookOpen,
 } from "lucide-react";
 import { readSettings, saveAdvancedSettings } from "../../../core/storage/repo";
-import type { Model } from "../../../core/storage/schemas";
+import { listPromptTemplates } from "../../../core/prompts/service";
+import {
+  APP_HELP_ME_REPLY_CONVERSATIONAL_TEMPLATE_ID,
+  APP_HELP_ME_REPLY_TEMPLATE_ID,
+} from "../../../core/prompts/constants";
+import type { Model, SystemPromptTemplate } from "../../../core/storage/schemas";
 import { cn, colors } from "../../design-tokens";
 import { getProviderIcon } from "../../../core/utils/providerIcons";
 import { ModelSelectionBottomMenu } from "../../components/ModelSelectionBottomMenu";
@@ -31,6 +36,11 @@ export function HelpMeReplyPage() {
   const [maxTokens, setMaxTokens] = useState(150);
   const [maxTokensInput, setMaxTokensInput] = useState("150");
   const [replyStyle, setReplyStyle] = useState<ReplyStyle>("conversational");
+  const [templates, setTemplates] = useState<SystemPromptTemplate[]>([]);
+  const [roleplayPromptTemplateId, setRoleplayPromptTemplateId] = useState<string | null>(null);
+  const [conversationalPromptTemplateId, setConversationalPromptTemplateId] = useState<
+    string | null
+  >(null);
 
   // Menu states
   const [showModelMenu, setShowModelMenu] = useState(false);
@@ -38,7 +48,10 @@ export function HelpMeReplyPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const settings = await readSettings();
+        const [settings, promptTemplates] = await Promise.all([
+          readSettings(),
+          listPromptTemplates(),
+        ]);
         const textModels = settings.models.filter(
           (m) => !m.outputScopes || m.outputScopes.includes("text"),
         );
@@ -50,6 +63,13 @@ export function HelpMeReplyPage() {
         setMaxTokens(tokens);
         setMaxTokensInput(String(tokens));
         setReplyStyle(settings.advancedSettings?.helpMeReplyStyle ?? "conversational");
+        setRoleplayPromptTemplateId(
+          settings.advancedSettings?.helpMeReplyRoleplayPromptTemplateId ?? null,
+        );
+        setConversationalPromptTemplateId(
+          settings.advancedSettings?.helpMeReplyConversationalPromptTemplateId ?? null,
+        );
+        setTemplates(promptTemplates);
         setIsLoading(false);
       } catch (err) {
         console.error("Failed to load settings:", err);
@@ -66,6 +86,8 @@ export function HelpMeReplyPage() {
       helpMeReplyStreaming: boolean;
       helpMeReplyMaxTokens: number;
       helpMeReplyStyle: ReplyStyle;
+      helpMeReplyRoleplayPromptTemplateId: string | undefined;
+      helpMeReplyConversationalPromptTemplateId: string | undefined;
     }>,
   ) => {
     try {
@@ -113,12 +135,32 @@ export function HelpMeReplyPage() {
     await saveSettings({ helpMeReplyStyle: style });
   };
 
+  const handleRoleplayPromptTemplateChange = async (templateId: string | null) => {
+    setRoleplayPromptTemplateId(templateId);
+    await saveSettings({ helpMeReplyRoleplayPromptTemplateId: templateId ?? undefined });
+  };
+
+  const handleConversationalPromptTemplateChange = async (templateId: string | null) => {
+    setConversationalPromptTemplateId(templateId);
+    await saveSettings({ helpMeReplyConversationalPromptTemplateId: templateId ?? undefined });
+  };
+
   const selectedModel = selectedModelId ? models.find((m) => m.id === selectedModelId) : null;
   const defaultModel = defaultModelId ? models.find((m) => m.id === defaultModelId) : null;
   const selectedModelLabel = selectedModel?.displayName || t("helpMeReply.labels.selectedModel");
   const appDefaultLabel = t("helpMeReply.labels.useAppDefault", {
     model: defaultModel ? ` (${defaultModel.displayName})` : "",
   });
+  const conversationalTemplates = templates.filter(
+    (template) =>
+      template.promptType === "replyHelperConversational" &&
+      template.id !== APP_HELP_ME_REPLY_CONVERSATIONAL_TEMPLATE_ID,
+  );
+  const roleplayTemplates = templates.filter(
+    (template) =>
+      template.promptType === "replyHelperRoleplay" &&
+      template.id !== APP_HELP_ME_REPLY_TEMPLATE_ID,
+  );
 
   if (isLoading) {
     return null;
@@ -381,6 +423,66 @@ export function HelpMeReplyPage() {
                   ? t("helpMeReply.labels.conversationalHint")
                   : t("helpMeReply.labels.roleplayHint")}
               </p>
+
+              <div className="space-y-4 pt-2">
+                <h3 className="px-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-fg/35">
+                  Prompt Templates
+                </h3>
+
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="rounded-lg border border-warning/30 bg-warning/10 p-1.5">
+                        <BookOpen className="h-4 w-4 text-warning" />
+                      </div>
+                      <h3 className="text-sm font-semibold text-fg">Conversational Prompt</h3>
+                    </div>
+                    <select
+                      value={conversationalPromptTemplateId ?? ""}
+                      onChange={(e) =>
+                        void handleConversationalPromptTemplateChange(e.target.value || null)
+                      }
+                      className="w-full appearance-none rounded-xl border border-fg/10 bg-surface-el/20 px-3.5 py-3 text-sm text-fg transition focus:border-fg/25 focus:outline-none"
+                    >
+                      <option value="">Use built-in default</option>
+                      {conversationalTemplates.map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="px-1 text-xs leading-relaxed text-fg/50">
+                      Used when Help Me Reply is set to conversational mode.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="rounded-lg border border-warning/30 bg-warning/10 p-1.5">
+                        <BookOpen className="h-4 w-4 text-warning" />
+                      </div>
+                      <h3 className="text-sm font-semibold text-fg">Roleplay Prompt</h3>
+                    </div>
+                    <select
+                      value={roleplayPromptTemplateId ?? ""}
+                      onChange={(e) =>
+                        void handleRoleplayPromptTemplateChange(e.target.value || null)
+                      }
+                      className="w-full appearance-none rounded-xl border border-fg/10 bg-surface-el/20 px-3.5 py-3 text-sm text-fg transition focus:border-fg/25 focus:outline-none"
+                    >
+                      <option value="">Use built-in default</option>
+                      {roleplayTemplates.map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="px-1 text-xs leading-relaxed text-fg/50">
+                      Used when Help Me Reply is set to roleplay mode.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
