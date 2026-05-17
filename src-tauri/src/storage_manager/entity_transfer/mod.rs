@@ -85,6 +85,8 @@ pub struct CharacterExportData {
     pub voice_autoplay: Option<bool>,
     pub disable_avatar_gradient: bool,
     pub avatar_crop: Option<AvatarCrop>,
+    #[serde(default)]
+    pub banner_crop: Option<AvatarCrop>,
     pub custom_gradient_enabled: Option<bool>,
     pub custom_gradient_colors: Option<Vec<String>>,
     pub custom_text_color: Option<String>,
@@ -704,6 +706,7 @@ fn parse_uec_character(value: &JsonValue) -> Result<CharacterExportPackage, Stri
         .and_then(|map| map.get("customTextSecondary").and_then(|v| v.as_str()))
         .map(|value| value.to_string());
     let avatar_crop = parse_avatar_crop(app_specific.and_then(|map| map.get("avatarCrop")));
+    let banner_crop = parse_avatar_crop(app_specific.and_then(|map| map.get("bannerCrop")));
     let chat_templates: Vec<ChatTemplateExport> = app_specific
         .and_then(|map| map.get("chatTemplates"))
         .and_then(|v| serde_json::from_value(v.clone()).ok())
@@ -750,6 +753,7 @@ fn parse_uec_character(value: &JsonValue) -> Result<CharacterExportPackage, Stri
             voice_autoplay,
             disable_avatar_gradient,
             avatar_crop,
+            banner_crop,
             custom_gradient_enabled,
             custom_gradient_colors,
             custom_text_color,
@@ -1149,6 +1153,9 @@ fn load_character_export_snapshot(
         avatar_crop_x,
         avatar_crop_y,
         avatar_crop_scale,
+        banner_crop_x,
+        banner_crop_y,
+        banner_crop_scale,
         default_chat_template_id,
         created_at,
         updated_at,
@@ -1183,12 +1190,15 @@ fn load_character_export_snapshot(
         Option<f64>,    // avatar_crop_x
         Option<f64>,    // avatar_crop_y
         Option<f64>,    // avatar_crop_scale
+        Option<f64>,    // banner_crop_x
+        Option<f64>,    // banner_crop_y
+        Option<f64>,    // banner_crop_scale
         Option<String>, // default_chat_template_id
         i64,            // created_at
         i64,            // updated_at
     ) = conn
         .query_row(
-            "SELECT name, avatar_path, background_image_path, description, definition, nickname, scenario, creator_notes, creator, creator_notes_multilingual, source, tags, default_scene_id, default_model_id, COALESCE(mode, 'roleplay'), companion, prompt_template_id, system_prompt, voice_config, voice_autoplay, memory_type, active_lorebook_ids, disable_avatar_gradient, custom_gradient_enabled, custom_gradient_colors, custom_text_color, custom_text_secondary, avatar_crop_x, avatar_crop_y, avatar_crop_scale, default_chat_template_id, created_at, updated_at FROM characters WHERE id = ?",
+            "SELECT name, avatar_path, background_image_path, description, definition, nickname, scenario, creator_notes, creator, creator_notes_multilingual, source, tags, default_scene_id, default_model_id, COALESCE(mode, 'roleplay'), companion, prompt_template_id, system_prompt, voice_config, voice_autoplay, memory_type, active_lorebook_ids, disable_avatar_gradient, custom_gradient_enabled, custom_gradient_colors, custom_text_color, custom_text_secondary, avatar_crop_x, avatar_crop_y, avatar_crop_scale, banner_crop_x, banner_crop_y, banner_crop_scale, default_chat_template_id, created_at, updated_at FROM characters WHERE id = ?",
             params![character_id],
             |r| {
                 Ok((
@@ -1225,6 +1235,9 @@ fn load_character_export_snapshot(
                     r.get(30)?,
                     r.get(31)?,
                     r.get(32)?,
+                    r.get(33)?,
+                    r.get(34)?,
+                    r.get(35)?,
                 ))
             },
         )
@@ -1403,6 +1416,10 @@ fn load_character_export_snapshot(
         (Some(x), Some(y), Some(scale)) => Some(AvatarCrop { x, y, scale }),
         _ => None,
     };
+    let banner_crop = match (banner_crop_x, banner_crop_y, banner_crop_scale) {
+        (Some(x), Some(y), Some(scale)) => Some(AvatarCrop { x, y, scale }),
+        _ => None,
+    };
 
     let package = CharacterExportPackage {
         version: 1,
@@ -1434,6 +1451,7 @@ fn load_character_export_snapshot(
             voice_autoplay,
             disable_avatar_gradient: disable_avatar_gradient != 0,
             avatar_crop,
+            banner_crop,
             custom_gradient_enabled: Some(custom_gradient_enabled != 0),
             custom_gradient_colors,
             custom_text_color,
@@ -1599,6 +1617,16 @@ fn build_uec_from_package(
     if let Some(crop) = package.character.avatar_crop.clone() {
         app_specific.insert(
             "avatarCrop".into(),
+            serde_json::json!({
+                "x": crop.x,
+                "y": crop.y,
+                "scale": crop.scale,
+            }),
+        );
+    }
+    if let Some(crop) = package.character.banner_crop.clone() {
+        app_specific.insert(
+            "bannerCrop".into(),
             serde_json::json!({
                 "x": crop.x,
                 "y": crop.y,
@@ -2016,6 +2044,12 @@ pub fn character_import(app: tauri::AppHandle, import_json: String) -> Result<St
         .as_ref()
         .map(|crop| (Some(crop.x), Some(crop.y), Some(crop.scale)))
         .unwrap_or((None, None, None));
+    let (banner_crop_x, banner_crop_y, banner_crop_scale) = package
+        .character
+        .banner_crop
+        .as_ref()
+        .map(|crop| (Some(crop.x), Some(crop.y), Some(crop.scale)))
+        .unwrap_or((None, None, None));
 
     let voice_config = package.character.voice_config.as_ref().and_then(|v| {
         if v.is_null() {
@@ -2039,8 +2073,8 @@ pub fn character_import(app: tauri::AppHandle, import_json: String) -> Result<St
 
     // Insert character
     tx.execute(
-        r#"INSERT INTO characters (id, name, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, background_image_path, description, definition, nickname, scenario, creator_notes, creator, creator_notes_multilingual, source, tags, default_scene_id, default_model_id, mode, companion, prompt_template_id, system_prompt, voice_config, voice_autoplay, memory_type, disable_avatar_gradient, custom_gradient_enabled, custom_gradient_colors, custom_text_color, custom_text_secondary, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+        r#"INSERT INTO characters (id, name, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, banner_crop_x, banner_crop_y, banner_crop_scale, background_image_path, description, definition, nickname, scenario, creator_notes, creator, creator_notes_multilingual, source, tags, default_scene_id, default_model_id, mode, companion, prompt_template_id, system_prompt, voice_config, voice_autoplay, memory_type, disable_avatar_gradient, custom_gradient_enabled, custom_gradient_colors, custom_text_color, custom_text_secondary, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
         params![
             &new_character_id,
             &package.character.name,
@@ -2048,6 +2082,9 @@ pub fn character_import(app: tauri::AppHandle, import_json: String) -> Result<St
             avatar_crop_x,
             avatar_crop_y,
             avatar_crop_scale,
+            banner_crop_x,
+            banner_crop_y,
+            banner_crop_scale,
             background_image_path,
             package.character.description,
             package
@@ -2302,6 +2339,7 @@ fn build_character_import_preview(
         "fileFormat": format,
         "avatarData": package.avatar_data,
         "avatarCrop": package.character.avatar_crop,
+        "bannerCrop": package.character.banner_crop,
         "backgroundImageData": package.background_image_data
     });
 
@@ -2511,6 +2549,16 @@ pub fn convert_export_to_uec(import_json: String) -> Result<String, String> {
             if let Some(crop) = package.character.avatar_crop.clone() {
                 app_specific.insert(
                     "avatarCrop".into(),
+                    serde_json::json!({
+                        "x": crop.x,
+                        "y": crop.y,
+                        "scale": crop.scale,
+                    }),
+                );
+            }
+            if let Some(crop) = package.character.banner_crop.clone() {
+                app_specific.insert(
+                    "bannerCrop".into(),
                     serde_json::json!({
                         "x": crop.x,
                         "y": crop.y,
@@ -2948,6 +2996,9 @@ fn read_imported_character(
         avatar_crop_x,
         avatar_crop_y,
         avatar_crop_scale,
+        banner_crop_x,
+        banner_crop_y,
+        banner_crop_scale,
         bg_path,
         description,
         definition,
@@ -2981,6 +3032,9 @@ fn read_imported_character(
         Option<f64>,    // avatar_crop_x
         Option<f64>,    // avatar_crop_y
         Option<f64>,    // avatar_crop_scale
+        Option<f64>,    // banner_crop_x
+        Option<f64>,    // banner_crop_y
+        Option<f64>,    // banner_crop_scale
         Option<String>, // background_image_path
         Option<String>, // description
         Option<String>, // definition
@@ -3010,7 +3064,7 @@ fn read_imported_character(
         i64,            // updated_at
     ) = conn
         .query_row(
-            "SELECT name, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, background_image_path, description, definition, nickname, scenario, creator_notes, creator, creator_notes_multilingual, source, tags, default_scene_id, default_model_id, COALESCE(mode, 'roleplay'), companion, prompt_template_id, active_lorebook_ids, system_prompt, voice_config, voice_autoplay, memory_type, disable_avatar_gradient, custom_gradient_enabled, custom_gradient_colors, custom_text_color, custom_text_secondary, created_at, updated_at FROM characters WHERE id = ?",
+            "SELECT name, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, banner_crop_x, banner_crop_y, banner_crop_scale, background_image_path, description, definition, nickname, scenario, creator_notes, creator, creator_notes_multilingual, source, tags, default_scene_id, default_model_id, COALESCE(mode, 'roleplay'), companion, prompt_template_id, active_lorebook_ids, system_prompt, voice_config, voice_autoplay, memory_type, disable_avatar_gradient, custom_gradient_enabled, custom_gradient_colors, custom_text_color, custom_text_secondary, created_at, updated_at FROM characters WHERE id = ?",
             params![character_id],
             |r| {
                 Ok((
@@ -3039,13 +3093,16 @@ fn read_imported_character(
                     r.get(22)?,
                     r.get(23)?,
                     r.get(24)?,
-                    r.get::<_, i64>(25)?,
-                    r.get::<_, i64>(26)?,
+                    r.get(25)?,
+                    r.get(26)?,
                     r.get(27)?,
-                    r.get(28)?,
-                    r.get(29)?,
+                    r.get::<_, i64>(28)?,
+                    r.get::<_, i64>(29)?,
                     r.get(30)?,
                     r.get(31)?,
+                    r.get(32)?,
+                    r.get(33)?,
+                    r.get(34)?,
                 ))
             },
         )
@@ -3148,6 +3205,12 @@ fn read_imported_character(
     if let (Some(x), Some(y), Some(scale)) = (avatar_crop_x, avatar_crop_y, avatar_crop_scale) {
         root.insert(
             "avatarCrop".into(),
+            serde_json::json!({ "x": x, "y": y, "scale": scale }),
+        );
+    }
+    if let (Some(x), Some(y), Some(scale)) = (banner_crop_x, banner_crop_y, banner_crop_scale) {
+        root.insert(
+            "bannerCrop".into(),
             serde_json::json!({ "x": x, "y": y, "scale": scale }),
         );
     }
